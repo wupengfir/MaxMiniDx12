@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.20)
 project(MinimalDX12 CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_executable(MinimalDX12 WIN32
     src/main.cpp
     src/dx12_context.cpp
- "src/mesh.h" "src/mesh.cpp" "src/pipeline.h" "src/pipeline.cpp")
+ "src/mesh.h" "src/mesh.cpp" "src/pipeline.h" "src/pipeline.cpp" "src/context.h" "src/context.cpp" "src/Resource.h" "src/Resource.cpp" "src/Constants.h" "src/Log/Logs.h" "src/TestResource.h" "src/Material.h" "src/Material.cpp")
 
 target_link_libraries(MinimalDX12 PRIVATE
     d3d12.lib    # DX12 核心
