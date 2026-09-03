@@ -7,8 +7,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # WIN32 = 桌面程序入口（WinMain），不加就是控制台程序
 add_executable(MinimalDX12 WIN32
     src/main.cpp
-    src/dx12_context.cpp
- "src/mesh.h" "src/mesh.cpp" "src/pipeline.h" "src/pipeline.cpp" "src/context.h" "src/context.cpp" "src/Resource.h" "src/Resource.cpp" "src/Constants.h" "src/Log/Logs.h" "src/TestResource.h" "src/Material.h" "src/Material.cpp")
+    
+ "src/mesh.h" "src/mesh.cpp"   "src/context.h" "src/context.cpp" "src/Resource.h" "src/Resource.cpp" "src/Constants.h" "src/Log/Logs.h" "src/TestResource.h" "src/Material.h" "src/Material.cpp")
 
 target_link_libraries(MinimalDX12 PRIVATE
     d3d12.lib    # DX12 核心

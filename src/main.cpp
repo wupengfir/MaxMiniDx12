@@ -1,34 +1,16 @@
 #include <windows.h>
 #include <cwchar>
-#include "dx12_context.h"
 #include "context.h"
 #include "mesh.h"
-#include "pipeline.h"
 #include "Resource.h"
 #include "TestResource.h"
 #include "Material.h"
 
-static ShaderPipeline g_pipeline;
-static Mesh g_triangleFront;  // 前面的三角形（红色）
-static Mesh g_triangleBack;   // 后面的三角形（蓝色）
 
-// 前面：z=0.2（更靠近相机），红色，偏左
-static const Vertex kFrontVertices[] = {
-    {{-0.3f,  0.5f, 0.2f}, {1.0f, 0.0f, 0.0f}},
-    {{-0.8f, -0.5f, 0.2f}, {1.0f, 0.0f, 0.0f}},
-    {{ 0.2f, -0.5f, 0.2f}, {1.0f, 0.0f, 0.0f}},
-};
-static const uint32_t kFrontIndices[] = { 0, 2, 1 };
 
-// 后面：z=0.8（更远），蓝色，偏右
-static const Vertex kBackVertices[] = {
-    {{ 0.3f,  0.5f, 0.8f}, {0.0f, 0.0f, 1.0f}},
-    {{-0.2f, -0.5f, 0.8f}, {0.0f, 0.0f, 1.0f}},
-    {{ 0.8f, -0.5f, 0.8f}, {0.0f, 0.0f, 1.0f}},
-};
-static const uint32_t kBackIndices[] = { 0, 2, 1 };
 
-static DX12Context   g_dx12;
+
+
 static HWND          g_hwnd = nullptr;
 static const uint32_t kWidth  = 1280;
 static const uint32_t kHeight = 720;
@@ -85,11 +67,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
         return -1;
     }
 
-    // 阶段6：创建 Root Signature + PSO
-    if (!g_pipeline.Create(logicalDevice.DxDevice())) {
-        MessageBoxW(g_hwnd, L"Pipeline Create Failed", L"Error", MB_ICONERROR);
-        return -1;
-    }
+
     DepthTextureBuffer depthbuffer;
     depthbuffer.Width = kWidth;
     depthbuffer.Height = kHeight;
@@ -97,26 +75,9 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
 
     MyMesh* mesh01;
     MyMesh* mesh02;
-    // 阶段5：上传顶点
-    //{
-    //    logicalDevice.BeginFrame();
-    //    CommandBuffer cmdbuffer = logicalDevice.GetCommandBufferPool()->AcquireCommandList(0,logicalDevice.FrameIndex(),CommandBufferPool::Type::DIRECT);
-    //    g_triangleFront.Upload(logicalDevice.DxDevice(), cmdbuffer.CmdList.Get(), kFrontVertices, 3, kFrontIndices, 3);
-    //    g_triangleBack.Upload(logicalDevice.DxDevice(), cmdbuffer.CmdList.Get(), kBackVertices, 3, kBackIndices, 3);
-    //    
+    
 
-    //    cmdbuffer.CmdList->Close();
-    //    ID3D12CommandList* lists[] = { cmdbuffer.CmdList.Get()};
-    //    logicalDevice.QueueDirect()->ExecuteCommandLists(1, lists);
-    //    //cmdbuffer.Release();
-
-    //    logicalDevice.EndFrame();
-    //    logicalDevice.WaitForGpu();
-    //    g_triangleFront.ReleaseTemporary();
-    //    g_triangleBack.ReleaseTemporary();
-    //}
-
-        {
+        
         logicalDevice.BeginFrame();
         CommandBuffer cmdbuffer = logicalDevice.GetCommandBufferPool()->AcquireCommandList(0,logicalDevice.FrameIndex(),CommandBufferPool::Type::DIRECT);
         mesh01 = TestResource::GetTestMesh01();
@@ -133,7 +94,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
         logicalDevice.WaitForGpu();
         mesh01->ReleaseUploadBuffer();
         mesh02->ReleaseUploadBuffer();
-    }
+    
 
     g_lastFpsTime = GetTickCount64();  // 新增
     // 消息循环（阶段2才会在 else 分支里加渲染）
@@ -181,9 +142,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
             
             cmdList->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
 
-            // 设置管线状态
-            cmdList->SetGraphicsRootSignature(g_pipeline.GetRootSignature());
-            cmdList->SetPipelineState(g_pipeline.GetPSO());
+
 
             D3D12_VIEWPORT viewport{};
             viewport.TopLeftX = 0;
@@ -203,11 +162,10 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
 
             cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-            // 画两个三角形（顺序无所谓，深度测试会处理遮挡）
-            /*g_triangleFront.Draw(cmdList);
-            g_triangleBack.Draw(cmdList);*/
             logicalDevice.DrawMesh(cmdList, mesh01,&mat);
             logicalDevice.DrawMesh(cmdList, mesh02,&mat);
+
+
             // 3. 过渡回 PRESENT 状态（才能 Present 到屏幕）
             D3D12_RESOURCE_BARRIER toPresent{};
             toPresent.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
