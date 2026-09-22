@@ -1,7 +1,7 @@
 #include "mesh.h"
 #include <cstring>
 
-MyMesh::StrideAndSize MyMesh::VertexBufferSize()
+Mesh::StrideAndSize Mesh::VertexBufferSize()
 {
     StrideAndSize result{};
     m_vertexSize = 0;
@@ -15,11 +15,11 @@ MyMesh::StrideAndSize MyMesh::VertexBufferSize()
     }
     if (tangent.size() > 0)
     {
-        m_vertexSize += 12;
+        m_vertexSize += 16;
     }
     if (color.size() > 0)
     {
-        m_vertexSize += 12;
+        m_vertexSize += 16;
     }
     if (uv0.size() > 0)
     {
@@ -42,7 +42,7 @@ MyMesh::StrideAndSize MyMesh::VertexBufferSize()
     return result;
 }
 
-const std::vector<D3D12_INPUT_ELEMENT_DESC>& MyMesh::GetInputDesc()
+const std::vector<D3D12_INPUT_ELEMENT_DESC>& Mesh::GetInputDesc()
 {
     descs.clear();
     UINT verticesCount = -1;
@@ -58,32 +58,32 @@ const std::vector<D3D12_INPUT_ELEMENT_DESC>& MyMesh::GetInputDesc()
     }
     if (tangent.size() > 0)
     {
-        descs.emplace_back("TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offset,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0);offset += 12;
+        descs.emplace_back("TANGENT", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offset,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0);offset += 16;
     }
     if (color.size() > 0)
     {
-        descs.emplace_back("COLOR", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offset,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0);offset += 12;
+        descs.emplace_back("COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offset,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0);offset += 16;
     }
     if (uv0.size() > 0)
     {
-        descs.emplace_back("TEXCOORD0", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offset,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0);offset += 16;
+        descs.emplace_back("TEXCOORD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offset,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0);offset += 16;
     }
     if (uv1.size() > 0)
     {
-        descs.emplace_back("TEXCOORD1", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offset,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0);offset += 16;
+        descs.emplace_back("TEXCOORD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offset,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0);offset += 16;
     }
     if (uv2.size() > 0)
     {
-        descs.emplace_back("TEXCOORD2", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offset,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0);offset += 16;
+        descs.emplace_back("TEXCOORD", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offset,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0);offset += 16;
     }
     if (uv3.size() > 0)
     {
-        descs.emplace_back("TEXCOORD3", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offset,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0);offset += 16;
+        descs.emplace_back("TEXCOORD", 3, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offset,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0);offset += 16;
     }
     return descs;
 }
 
-void* MyMesh::GetData()
+void* Mesh::GetData()
 {
     if (data.size() > 0)return (void*)(data.data());
     UINT offset = 0;
@@ -102,13 +102,13 @@ void* MyMesh::GetData()
         }
         if (tangent.size() > 0)
         {
-            memcpy((byte*)(data.data()) + offset,(byte*)(tangent.data())+12*i, 12);
-            offset += 12;
+            memcpy((byte*)(data.data()) + offset,(byte*)(tangent.data())+16*i, 16);
+            offset += 16;
         }
         if (color.size() > 0)
         {
-            memcpy((byte*)(data.data()) + offset,(byte*)(color.data())+12*i, 12);
-            offset += 12;
+            memcpy((byte*)(data.data()) + offset,(byte*)(color.data())+16*i, 16);
+            offset += 16;
         }
         if (uv0.size() > 0)
         {
@@ -134,7 +134,7 @@ void* MyMesh::GetData()
     return (void*)(data.data());
 }
 
-void MyMesh::Upload(ID3D12GraphicsCommandList* cmdList, ID3D12Heap* heap)
+void Mesh::Upload(ID3D12GraphicsCommandList* cmdList, ID3D12Heap* heap)
 {
     StrideAndSize strideAndSize = VertexBufferSize();
     //placed upload

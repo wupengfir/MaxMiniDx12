@@ -3,13 +3,26 @@ project(MinimalDX12 CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
- 
+find_package(DirectXTex CONFIG REQUIRED) 
+find_package(assimp REQUIRED)
+find_package(imgui REQUIRED)
 # WIN32 = 桌面程序入口（WinMain），不加就是控制台程序
 add_executable(MinimalDX12 WIN32
     src/main.cpp
     
- "src/mesh.h" "src/mesh.cpp"   "src/context.h" "src/context.cpp" "src/Resource.h" "src/Resource.cpp" "src/Constants.h" "src/Log/Logs.h" "src/TestResource.h" "src/Material.h" "src/Material.cpp")
+ "src/mesh.h" "src/mesh.cpp"   "src/context.h" "src/BasicComponents.h" "src/context.cpp" "src/Resource.h" "src/Resource.cpp" "src/Constants.h" "src/Log/Logs.h" "src/TestResource.h" "src/Material.h" "src/Material.cpp" "src/RenderPass.h" "src/RenderPass.cpp" "src/Scene.h" "src/Scene.cpp" "src/Camera.h" "src/Camera.cpp" "src/Common.h" "src/Texture.h" "src/ui/ImGuiLayer.h" "src/ui/ImGuiLayer.cpp" "src/Common.cpp")
+  
+target_include_directories(MinimalDX12 PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui
+)
 
+target_link_libraries(MinimalDX12 PRIVATE Microsoft::DirectXTex)
+target_link_libraries(MinimalDX12 PRIVATE assimp::assimp)
+target_link_libraries(MinimalDX12 PRIVATE 
+    imgui::imgui
+
+)
 target_link_libraries(MinimalDX12 PRIVATE
     d3d12.lib    # DX12 核心
     dxgi.lib     # SwapChain
@@ -34,6 +47,15 @@ set_target_properties(MinimalDX12 PROPERTIES
 # 构建后把 shaders 目录复制到 exe 旁边，这样代码里用相对路径 "shaders/triangle.hlsl" 能找到
 add_custom_command(TARGET MinimalDX12 POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${CMAKE_SOURCE_DIR}/src/shaders
+    ${CMAKE_SOURCE_DIR}/src/shaders 
     $<TARGET_FILE_DIR:MinimalDX12>/shaders
-)
+) 
+
+add_custom_command(TARGET MinimalDX12 POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_SOURCE_DIR}/src/resource 
+    $<TARGET_FILE_DIR:MinimalDX12>/resource
+)    
+
+message(STATUS "==== CMAKE_PREFIX_PATH = ${CMAKE_PREFIX_PATH}")
+ 

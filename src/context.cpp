@@ -1,12 +1,13 @@
 #include "context.h"
 #include "mesh.h"
 #include "Material.h"
-GraphicsDevice::GraphicsDevice(bool useDebugLayer):useDebug(useDebugLayer)
+#include "Camera.h"
+Context::Context(bool useDebugLayer):useDebug(useDebugLayer)
 {
     
 }
 
-void GraphicsDevice::SyncGPU(UINT64 signal)
+void Context::SyncGPU(UINT64 signal)
 {
 	if (signal > 0 && m_fence->GetCompletedValue() < signal) {
         m_fence->SetEventOnCompletion(signal, m_fenceEvent);
@@ -14,14 +15,55 @@ void GraphicsDevice::SyncGPU(UINT64 signal)
     }
 }
 
-void GraphicsDevice::WaitForGpu() {
+void Context::WaitForGpu() {
     // 提交一个空 Signal，等它完成 = 等之前所有命令完成
     uint64_t val = m_nextFenceValue++;
     m_queueDirect->Signal(m_fence.Get(), val);
     SyncGPU(val);
 }
 
-void GraphicsDevice::BeginFrame() {
+void Context::CreateFrameBuffers()
+{
+    depthbuffer.Width = ScreenWidth * Context::GlobalSetting.RenderScale;
+    depthbuffer.Height = ScreenHeight * Context::GlobalSetting.RenderScale;
+    depthbuffer.CreateTexture();
+
+    colorbuffer.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    colorbuffer.Width = ScreenWidth * Context::GlobalSetting.RenderScale;
+    colorbuffer.Height = ScreenHeight * Context::GlobalSetting.RenderScale;
+    colorbuffer.CreateTexture();
+}
+
+void Context::ResizeFrameBuffers()
+{
+    if (depthbuffer.GetTexture())
+    {
+        depthbuffer.Release();
+    }
+    depthbuffer.Width = ScreenWidth * Context::GlobalSetting.RenderScale;
+    depthbuffer.Height = ScreenHeight * Context::GlobalSetting.RenderScale;
+    depthbuffer.CreateTexture();
+    if (colorbuffer.GetTexture())
+    {
+        colorbuffer.Release();
+    }
+    colorbuffer.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    colorbuffer.Width = ScreenWidth * Context::GlobalSetting.RenderScale;
+    colorbuffer.Height = ScreenHeight * Context::GlobalSetting.RenderScale;
+    colorbuffer.CreateTexture();
+}
+
+void Context::Update()
+{
+    if (GlobalSetting.RenderScale != GlobalSetting.PrevRenderScale)
+    {
+        WaitForGpu();
+        ResizeFrameBuffers();
+        GlobalSetting.PrevRenderScale = GlobalSetting.RenderScale;
+    }
+}
+
+void Context::BeginFrame() {
     // 拿到当前要写的 backbuffer 下标
     m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 
@@ -33,7 +75,7 @@ void GraphicsDevice::BeginFrame() {
 
 }
 
-void GraphicsDevice::EndFrame() {
+void Context::EndFrame() {
     //// 录制结束，关闭 cmdlist
     //m_cmdList->Close();
 
@@ -50,7 +92,7 @@ void GraphicsDevice::EndFrame() {
     m_frameFenceValues[m_frameIndex] = val; // 记录这个 buffer 对应的 fence 值
 }
 
-void GraphicsDevice::DrawMesh(ID3D12GraphicsCommandList* cmdList,MyMesh* mesh,Material* mat)
+void Context::DrawMesh(ID3D12GraphicsCommandList* cmdList,Mesh* mesh,int submeshIndex,Material* mat,const XMMATRIX* matrix ,Camera* camera,DXGI_FORMAT formats[],const XMMATRIX* matrixInvs )
 {
     /*ID3D12PipelineState* pso;
     auto it = PSOManager::PsoMap.find(mat);
@@ -66,18 +108,145 @@ void GraphicsDevice::DrawMesh(ID3D12GraphicsCommandList* cmdList,MyMesh* mesh,Ma
     }
     else
     {
+        mat->Create();
         mat->PsoDesc().InputLayout = { mesh->GetInputDesc().data(),(UINT)mesh->GetInputDesc().size() };
+        memcpy(mat->PsoDesc().RTVFormats, formats, sizeof(DXGI_FORMAT) * 8);
         DxDevice()->CreateGraphicsPipelineState(&mat->PsoDesc(), IID_PPV_ARGS(&(mat->GetPso())));
     }
 
     cmdList->SetGraphicsRootSignature(mat->GetRootSignature().Get());
     cmdList->SetPipelineState(mat->GetPso().Get());
 
+    //设置材质属性
+    auto& paramList = mat->GetShader()->GetShaderResourceParams();
+    UINT slotIndex = 0;
+    for (size_t i = 0; i < paramList.size(); i++)
+    {
+        auto& param = paramList[i];
+        //判断cb
+        if (param.bufferDataDescs.size() > 0)
+        {
+            //perframe buffer
+            if (param.bindDesc.BindPoint == 0 && param.bindDesc.Space == 0)
+            {
+                
+                if (param.AlignedConstantBuffer == nullptr)
+                param.AlignedConstantBuffer = new uint8_t[param.alignedCBufferSize]{};
+                auto value = param.bufferDataDescs[0];
+                XMFLOAT3 cameraPos = camera->GetTransform().GetPos();
+                XMFLOAT4 cameraPos4 = XMFLOAT4(cameraPos.x,cameraPos.y,cameraPos.z,1);
+                memcpy(param.AlignedConstantBuffer+value.StartOffset,&cameraPos4,16);
+                value = param.bufferDataDescs[1];
+                XMMATRIX vp = camera->ViewMatrix() * camera->ProjectionMatrix();
+                memcpy(param.AlignedConstantBuffer+value.StartOffset,&vp,64);
+                /*XMVECTOR tt = XMVector4Transform(XMVECTOR{ 0,0,0,1 }, vp);*/
+                auto offset = CBufferHeap()->WriteConstantBuffer(param.AlignedConstantBuffer,param.alignedCBufferSize);
+                cmdList->SetGraphicsRootConstantBufferView(slotIndex,CBufferHeap()->GetAddress() + offset);
+                slotIndex++;
+            }
+             //perdraw buffer
+            else if (param.bindDesc.BindPoint == 1 && param.bindDesc.Space == 0)
+            {
+                if (param.AlignedConstantBuffer == nullptr)
+                param.AlignedConstantBuffer = new uint8_t[param.alignedCBufferSize]{};
+
+                auto value = param.bufferDataDescs[0]; 
+                memcpy(param.AlignedConstantBuffer+value.StartOffset,matrix,value.Size);
+                value = param.bufferDataDescs[1]; 
+                if (matrixInvs)
+                {
+                    memcpy(param.AlignedConstantBuffer+value.StartOffset,matrixInvs,value.Size);
+                }
+                else
+                {
+                    memset(param.AlignedConstantBuffer+value.StartOffset,0,value.Size);
+                }                
+
+                auto offset = CBufferHeap()->WriteConstantBuffer(param.AlignedConstantBuffer,param.alignedCBufferSize);
+                cmdList->SetGraphicsRootConstantBufferView(slotIndex,CBufferHeap()->GetAddress() + offset);
+                slotIndex++;
+            }
+            //perFrame buffer
+            else if (param.bindDesc.BindPoint == 2 && param.bindDesc.Space == 0)
+            {
+                if (param.AlignedConstantBuffer == nullptr)
+                param.AlignedConstantBuffer = new uint8_t[param.alignedCBufferSize]{};
+
+                auto value = param.bufferDataDescs[0]; 
+                auto dir = XMVector3Normalize(XMVECTOR{ GlobalSetting.MainLightDirection.x,GlobalSetting.MainLightDirection.y,GlobalSetting.MainLightDirection.z,GlobalSetting.MainLightDirection.w });
+                memcpy(param.AlignedConstantBuffer+value.StartOffset,&dir,value.Size);
+                value = param.bufferDataDescs[1]; 
+                memcpy(param.AlignedConstantBuffer+value.StartOffset,&GlobalSetting.MainLightColor,value.Size);
+
+                auto offset = CBufferHeap()->WriteConstantBuffer(param.AlignedConstantBuffer,param.alignedCBufferSize);
+                cmdList->SetGraphicsRootConstantBufferView(slotIndex,CBufferHeap()->GetAddress() + offset);
+                slotIndex++;
+            }
+           
+
+            else
+            {
+                for (size_t j = 0; j < param.bufferDataDescs.size(); j++)
+                {
+                    if (param.AlignedConstantBuffer == nullptr)
+                    param.AlignedConstantBuffer = new uint8_t[param.alignedCBufferSize]{};
+                    auto value = param.bufferDataDescs[j];
+                    auto name = param.bufferDataDescNames[j];
+                    MaterialProperty* property = mat->FindProperty(name);
+                    if (property)
+                    {
+                        //printf("x is :  %f\n",*((float*)(property->data)));
+                        memcpy(param.AlignedConstantBuffer+value.StartOffset,property->data,property->size);
+                    }
+                    else
+                    {
+                        memset(param.AlignedConstantBuffer+value.StartOffset,0,value.Size);
+                    }
+                
+                }           
+                auto offset = CBufferHeap()->WriteConstantBuffer(param.AlignedConstantBuffer,param.alignedCBufferSize);
+                cmdList->SetGraphicsRootConstantBufferView(slotIndex,CBufferHeap()->GetAddress() + offset);
+                slotIndex++;
+            }
+
+            
+        }
+        else
+        {
+            if (param.bindDesc.Type == D3D_SIT_SAMPLER)continue;
+            if (param.bindDesc.Type == D3D_SHADER_INPUT_TYPE::D3D10_SIT_TEXTURE)
+            {
+                MaterialProperty* property = mat->FindProperty(param.name);
+                if (property)
+                {
+                   cmdList->SetGraphicsRootDescriptorTable(slotIndex,property->texture->GPUHandles[int(ViewType::SRV)]);
+                   slotIndex++;
+                }
+                else
+                {
+                    if (param.name.find("Normal") != std::string::npos)
+                    {
+                        cmdList->SetGraphicsRootDescriptorTable(slotIndex,TextureBuffer::GetDefaultNormalTex().GPUHandles[int(ViewType::SRV)]);
+                    }
+                    else
+                    {
+                        cmdList->SetGraphicsRootDescriptorTable(slotIndex,TextureBuffer::GetDefaultWhiteTex().GPUHandles[int(ViewType::SRV)]);
+                    }
+                   
+                   slotIndex++;
+                }
+                
+            }
+        }
+        
+    }
+    
+
     cmdList->IASetVertexBuffers(0, 1, mesh->VBV());
     if (mesh->indices.size() > 0)
     {
         cmdList->IASetIndexBuffer(mesh->IBV());
-        cmdList->DrawIndexedInstanced(mesh->indices.size(),1,0,0,0);
+        cmdList->DrawIndexedInstanced(mesh->IndicesOffsets[submeshIndex].size,1,mesh->IndicesOffsets[submeshIndex].start, 0, 0);
     }
     else
     {
@@ -85,10 +254,103 @@ void GraphicsDevice::DrawMesh(ID3D12GraphicsCommandList* cmdList,MyMesh* mesh,Ma
     }
 }
 
-bool GraphicsDevice::Init(HWND hwnd, uint32_t width, uint32_t height)
+
+void Context::Dispatch(ID3D12GraphicsCommandList* cmdList,Material* mat,UINT x,UINT y,UINT z )
+{
+ 
+    ID3D12PipelineState* pso = mat->GetPso().Get();
+    if (pso)
+    {
+
+    }
+    else
+    {
+        mat->Create();
+    }
+
+    cmdList->SetComputeRootSignature(mat->GetRootSignature().Get());
+    cmdList->SetPipelineState(mat->GetPso().Get());
+
+    //设置材质属性
+    auto& paramList = mat->GetComputeShader()->GetShaderResourceParams();
+    UINT slotIndex = 0;
+    for (size_t i = 0; i < paramList.size(); i++)
+    {
+        auto& param = paramList[i];
+        //判断cb
+        if (param.bufferDataDescs.size() > 0)
+        {
+           
+            for (size_t j = 0; j < param.bufferDataDescs.size(); j++)
+            {
+                if (param.AlignedConstantBuffer == nullptr)
+                param.AlignedConstantBuffer = new uint8_t[param.alignedCBufferSize]{};
+                auto value = param.bufferDataDescs[j];
+                auto name = param.bufferDataDescNames[j];
+                MaterialProperty* property = mat->FindProperty(name);
+                if (property)
+                {
+                    //printf("x is :  %f\n",*((float*)(property->data)));
+                    memcpy(param.AlignedConstantBuffer+value.StartOffset,property->data,property->size);
+                }
+                else
+                {
+                    memset(param.AlignedConstantBuffer+value.StartOffset,0,value.Size);
+                }
+                
+            }           
+            auto offset = CBufferHeap()->WriteConstantBuffer(param.AlignedConstantBuffer,param.alignedCBufferSize);
+            cmdList->SetComputeRootConstantBufferView(slotIndex,CBufferHeap()->GetAddress() + offset);
+            slotIndex++;
+  
+
+            
+        }
+        else
+        {
+            if (param.bindDesc.Type == D3D_SIT_SAMPLER)continue;
+            if (param.bindDesc.Type == D3D_SHADER_INPUT_TYPE::D3D_SIT_TEXTURE)
+            {
+                MaterialProperty* property = mat->FindProperty(param.name);
+                if (property)
+                {
+                   cmdList->SetComputeRootDescriptorTable(slotIndex,property->texture->GPUHandles[int(ViewType::SRV)]);
+                   slotIndex++;
+                }
+                else
+                {
+                   cmdList->SetComputeRootDescriptorTable(slotIndex,TextureBuffer::GetDefaultWhiteTex().GPUHandles[int(ViewType::SRV)]);
+                   slotIndex++;
+                }                
+            }
+            else if (param.bindDesc.Type == D3D_SHADER_INPUT_TYPE::D3D_SIT_UAV_RWSTRUCTURED || param.bindDesc.Type == D3D_SHADER_INPUT_TYPE::D3D_SIT_STRUCTURED)
+            {
+                MaterialProperty* property = mat->FindProperty(param.name);
+                if (property)
+                {
+                   cmdList->SetComputeRootDescriptorTable(slotIndex,property->buffer->GPUHandles[int(ViewType::SRV)]);
+                   slotIndex++;
+                }                
+            }
+        }
+        
+    }
+    cmdList->Dispatch(x,y,z);
+}
+
+
+void Context::ShutDown()
+{
+    Mesh::ReleaseAllMeshs();
+}
+
+bool Context::Init(HWND hwnd, uint32_t width, uint32_t height)
 {
     ScreenWidth = width;
 	ScreenHeight = height;
+
+
+
 	if (useDebug)
 	{
 		if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&m_debug)))) 
@@ -129,13 +391,16 @@ bool GraphicsDevice::Init(HWND hwnd, uint32_t width, uint32_t height)
 	{
 		return false;
 	}
-    pDefaultDevice = this;
+    pContext = this;
     Resource::m_device = this;
     m_commandBufferPool = new CommandBufferPool(1);
-    m_DsvHeap = new DSVDescriptorHeap(4);
-    m_RtvHeap = new RTVDescriptorHeap(16);
-
-	
+    m_DsvHeap = new DSVDescriptorHeap(1024);
+    m_RtvHeap = new RTVDescriptorHeap(1024);
+    m_SrvHeap = new SRVDescriptorHeap(1024*512);
+    m_CBufferHeap = new ConstantBufferHeap();
+    m_CBufferHeap->init();
+    m_ReadbackBufferHeap = new ReadbackBufferHeap();
+    m_ReadbackBufferHeap->init();
 	D3D12_COMMAND_QUEUE_DESC qDesc{};
     qDesc.Type  = D3D12_COMMAND_LIST_TYPE_DIRECT;
     qDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
@@ -176,7 +441,9 @@ bool GraphicsDevice::Init(HWND hwnd, uint32_t width, uint32_t height)
 		rtDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
 		rtDesc.Texture2D.MipSlice = 0;
 		DescriptorHeap::ViewDesc viewdesc(&rtDesc);
-        m_RtvHeap->CreateView(m_backBuffers[i].Get(),viewdesc);
+
+        m_swapChainViews[i] = m_RtvHeap->CreateView(m_backBuffers[i].Get(),viewdesc);
+
     }
 
     // 8. Fence + Win32 Event：GPU 完成后通过 Event 通知 CPU

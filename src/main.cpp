@@ -1,14 +1,30 @@
 #include <windows.h>
+#include <windowsx.h>
 #include <cwchar>
+#include <algorithm>
+#include <chrono>
 #include "context.h"
 #include "mesh.h"
 #include "Resource.h"
 #include "TestResource.h"
 #include "Material.h"
+#include "Scene.h"
+#include "RenderPass.h"
 
+#define _CRTDBG_MAP_ALLOC
+#include <crtdbg.h>
+#include "Camera.h"
+#include "Texture.h"
+#include "ImGuiLayer.h"
 
+#include <imgui.h>
+#include <imgui_impl_win32.h>
 
-
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(
+    HWND hwnd,
+    UINT msg,
+    WPARAM wParam,
+    LPARAM lParam);
 
 
 static HWND          g_hwnd = nullptr;
@@ -16,17 +32,166 @@ static const uint32_t kWidth  = 1280;
 static const uint32_t kHeight = 720;
 // FPS 计数
 static uint64_t g_frameCount = 0;
-static uint64_t g_lastFpsTime = 0;
+static Camera* g_gameCamera = nullptr;
+static bool g_isRotatingCamera = false;
+static POINT g_lastMousePosition{};
+static constexpr float kMouseSensitivity = 0.003f;
+static constexpr float kCameraMoveSpeed = 2.0f;
+
+bool IsKeyDown(int vkCode)
+{
+    // 最高位=1代表当前按下
+    return (GetAsyncKeyState(vkCode) & 0x8000) != 0;
+}
+
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    const bool hasImGuiContext = ImGui::GetCurrentContext() != nullptr;
+    if (hasImGuiContext)
+    {
+        // Always forward input so ImGui can update its internal state. Whether
+        // the scene should also consume it is decided by WantCaptureMouse.
+        ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam);
+    }
+
     switch (msg) {
+    case WM_RBUTTONDOWN:
+        if (g_gameCamera &&
+            (!hasImGuiContext || !ImGui::GetIO().WantCaptureMouse))
+        {
+            g_isRotatingCamera = true;
+            g_lastMousePosition = {
+                GET_X_LPARAM(lParam),
+                GET_Y_LPARAM(lParam)
+            };
+            SetCapture(hwnd);
+        }
+        return 0;
+
+    case WM_MOUSEMOVE:
+        if (g_gameCamera && g_isRotatingCamera)
+        {
+            const POINT currentMousePosition{
+                GET_X_LPARAM(lParam),
+                GET_Y_LPARAM(lParam)
+            };
+            const LONG deltaX = currentMousePosition.x - g_lastMousePosition.x;
+            const LONG deltaY = currentMousePosition.y - g_lastMousePosition.y;
+            g_lastMousePosition = currentMousePosition;
+
+            XMFLOAT3 rotation = g_gameCamera->GetTransform().GetRotation();
+            rotation.z -= static_cast<float>(deltaX) * kMouseSensitivity;
+            rotation.x -= static_cast<float>(deltaY) * kMouseSensitivity;
+
+            constexpr float maxPitch = XMConvertToRadians(89.0f);
+            rotation.x = std::clamp(rotation.x, -maxPitch, maxPitch);
+            g_gameCamera->SetRotation(rotation);
+        }
+        return 0;
+
+    case WM_RBUTTONUP:
+        if (g_isRotatingCamera)
+        {
+            g_isRotatingCamera = false;
+            ReleaseCapture();
+        }
+        return 0;
+
+    case WM_CAPTURECHANGED:
+        // Capture ownership may change while ImGui is processing the same
+        // mouse gesture. Do not cancel camera rotation while RMB is still down.
+        if (!IsKeyDown(VK_RBUTTON))
+        {
+            g_isRotatingCamera = false;
+        }
+        return 0;
+
+    case WM_KILLFOCUS:
+        g_isRotatingCamera = false;
+        if (GetCapture() == hwnd)
+        {
+            ReleaseCapture();
+        }
+        return 0;
+
     //case WM_SIZE:
     //    g_dx12.Resize(LOWORD(lParam), HIWORD(lParam));
     //    return 0;
+
+    //case WM_KEYDOWN:
+    //{
+    //    // wParam = 虚拟键码 Virtual-Key Code
+    //    UINT key = (UINT)wParam;
+    //    if(key == 'A')
+    //    {
+    //        XMFLOAT3 pos = Scene::CurrentScene->cameras[0]->GetTransform().GetPos();
+    //        pos.y -= 0.05;
+    //        Scene::CurrentScene->cameras[0]->SetPos(pos);
+    //    }
+    //    else if (key == 'D')
+    //    {
+    //        XMFLOAT3 pos = Scene::CurrentScene->cameras[0]->GetTransform().GetPos();
+    //        pos.y += 0.05;
+    //        Scene::CurrentScene->cameras[0]->SetPos(pos);
+    //    }
+    //    else if (key == 'S')
+    //    {
+    //        XMFLOAT3 pos = Scene::CurrentScene->cameras[0]->GetTransform().GetPos();
+    //        pos.x -= 0.05;
+    //        Scene::CurrentScene->cameras[0]->SetPos(pos);
+    //    }
+    //    else if(key == 'W')
+    //    {
+    //       XMFLOAT3 pos = Scene::CurrentScene->cameras[0]->GetTransform().GetPos();
+    //        pos.x += 0.05;
+    //        Scene::CurrentScene->cameras[0]->SetPos(pos); 
+    //    }
+    //    break;
+    //}
     case WM_DESTROY:
         PostQuitMessage(0);
         return 0;
     }
     return DefWindowProc(hwnd, msg, wParam, lParam);
+}
+
+void UpdateCameraMovement(Camera& camera, float deltaTime)
+{
+    if (ImGui::GetCurrentContext() && ImGui::GetIO().WantCaptureKeyboard)
+    {
+        return;
+    }
+
+    XMVECTOR localMovement = XMVectorZero();
+
+    // The project uses X=forward, Y=right, Z=up in camera-local space.
+    if (IsKeyDown('W')) localMovement = XMVectorAdd(localMovement, XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f));
+    if (IsKeyDown('S')) localMovement = XMVectorAdd(localMovement, XMVectorSet(-1.0f, 0.0f, 0.0f, 0.0f));
+    if (IsKeyDown('D')) localMovement = XMVectorAdd(localMovement, XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f));
+    if (IsKeyDown('A')) localMovement = XMVectorAdd(localMovement, XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f));
+    if (IsKeyDown('E')) localMovement = XMVectorAdd(localMovement, XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f));
+    if (IsKeyDown('Q')) localMovement = XMVectorAdd(localMovement, XMVectorSet(0.0f, 0.0f, -1.0f, 0.0f));
+
+    if (XMVector3LengthSq(localMovement).m128_f32[0] < 1e-6f)
+    {
+        return;
+    }
+
+    // Normalize so diagonal movement is not faster, then rotate the local
+    // direction by the camera orientation. w=0 keeps translation out.
+    localMovement = XMVector3Normalize(localMovement);
+    localMovement = XMVectorScale(localMovement, kCameraMoveSpeed * deltaTime);
+
+    std::swap(localMovement.m128_f32[0],localMovement.m128_f32[1]);
+
+    const XMVECTOR worldMovement = XMVector4Transform(
+        localMovement,
+        camera.GetTransform().WorldMatrix());
+
+    XMFLOAT3 position = camera.GetTransform().GetPos();
+    position.x += worldMovement.m128_f32[0];
+    position.y += worldMovement.m128_f32[1];
+    position.z += worldMovement.m128_f32[2];
+    camera.SetPos(position);
 }
 
 HWND CreateCustomWindow(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int nCmdShow)
@@ -55,266 +220,245 @@ HWND CreateCustomWindow(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR
     return hwnd;
 }
 
+void AllocateConsole()
+{
+    AllocConsole();
+    freopen_s((FILE**)stdout, "CONOUT$", "w", stdout);
+    freopen_s((FILE**)stderr, "CONOUT$", "w", stderr);
+}
 
 int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int nCmdShow) { 
+    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
+    //_CrtSetBreakAlloc(269);
     g_hwnd = CreateCustomWindow(hInstance, nullptr, nullptr, nCmdShow);
 
+    AllocateConsole();
 
-    GraphicsDevice logicalDevice;
-    if (!logicalDevice.Init(g_hwnd, kWidth, kHeight))
+    Context currentContext;
+    if (!currentContext.Init(g_hwnd, kWidth, kHeight))
     {
         MessageBoxW(g_hwnd, L"DX12 Init Failed", L"Error", MB_ICONERROR);
         return -1;
     }
 
+    ImGuiLayer imguiLayer;
+    if (!imguiLayer.Initialize(g_hwnd, currentContext))
+    {
+        MessageBoxW(g_hwnd, L"ImGui Init Failed", L"Error", MB_ICONERROR);
+        return -1;
+    }
+    currentContext.CreateFrameBuffers();
 
-    DepthTextureBuffer depthbuffer;
-    depthbuffer.Width = kWidth;
-    depthbuffer.Height = kHeight;
-    depthbuffer.CreateTexture();
-
-    MyMesh* mesh01;
-    MyMesh* mesh02;
     
 
-        
-        logicalDevice.BeginFrame();
-        CommandBuffer cmdbuffer = logicalDevice.GetCommandBufferPool()->AcquireCommandList(0,logicalDevice.FrameIndex(),CommandBufferPool::Type::DIRECT);
-        mesh01 = TestResource::GetTestMesh01();
-        mesh02 = TestResource::GetTestMesh02();
-        mesh01->Upload(cmdbuffer.CmdList.Get());
-        mesh02->Upload(cmdbuffer.CmdList.Get());
 
-        cmdbuffer.CmdList->Close();
-        ID3D12CommandList* lists[] = { cmdbuffer.CmdList.Get()};
-        logicalDevice.QueueDirect()->ExecuteCommandLists(1, lists);
-        //cmdbuffer.Release();
+    currentContext.BeginFrame();
+    //创建一些默认资源
+    InitEngineResource();
 
-        logicalDevice.EndFrame();
-        logicalDevice.WaitForGpu();
-        mesh01->ReleaseUploadBuffer();
-        mesh02->ReleaseUploadBuffer();
+    CommandBuffer cmdbuffer = currentContext.GetCommandBufferPool()->AcquireCommandList(0,currentContext.FrameIndex(),CommandBufferPool::Type::DIRECT);
     
+    
+    Mesh* mesh01;
+    Mesh* mesh02;
+    Mesh* helmetMesh = Mesh::Load("resource/mesh/sci_fi_space_helmet_by_aliashasim.FBX");
+    TestResource::QuadMesh = TestResource::GetMeshQuad();
+    mesh01 = Mesh::Load("resource/mesh/ball.FBX");
+    mesh02 = Mesh::Load("resource/mesh/tree01.FBX");
+    mesh01->Upload(cmdbuffer.CmdList.Get());
+    mesh02->Upload(cmdbuffer.CmdList.Get());
+    helmetMesh->Upload(cmdbuffer.CmdList.Get());
+    TestResource::QuadMesh->Upload(cmdbuffer.CmdList.Get());
 
-    g_lastFpsTime = GetTickCount64();  // 新增
-    // 消息循环（阶段2才会在 else 分支里加渲染）
 
 
+    Texture tex01;
+    tex01.LoadTexture(L"resource/texture/1.tga",true,true);
+    tex01.UploadTexture(tex01.GetImage(), cmdbuffer.CmdList.Get());
+    Texture texCube;
+    texCube.LoadTexture(L"resource/texture/simons_town_rocks_skybox.dds",true,false);
+    texCube.UploadTexture(texCube.GetImage(), cmdbuffer.CmdList.Get());
 
-    //创建材质
-    Shader shader("shaders/triangle.hlsl");
+    Texture albedoTex;
+    albedoTex.LoadTexture(L"resource/texture/1k/SFSHelmet_bcolor.png",true,true);
+    albedoTex.UploadTexture(albedoTex.GetImage(), cmdbuffer.CmdList.Get());
+
+    Texture metallicTex;
+    metallicTex.LoadTexture(L"resource/texture/1k/SFSHelmet_metal.png",true,false);
+    metallicTex.UploadTexture(metallicTex.GetImage(), cmdbuffer.CmdList.Get());
+
+    Texture roughnessTex;
+    roughnessTex.LoadTexture(L"resource/texture/1k/SFSHelmet_rough.png",true,false);
+    roughnessTex.UploadTexture(roughnessTex.GetImage(), cmdbuffer.CmdList.Get());
+
+    Texture normalTex;
+    normalTex.LoadTexture(L"resource/texture/1k/SFSHelmet_norm.png",true,false);
+    normalTex.UploadTexture(normalTex.GetImage(), cmdbuffer.CmdList.Get());
+
+    /*StructureBuffer uavBuffer;
+    uavBuffer.ReadWrite = true;
+    uavBuffer.Width = 256;
+    uavBuffer.Stride = sizeof(XMFLOAT3);
+    uavBuffer.CreateBuffer();*/
+
+    //Compute Shader
+    ComputeShader sampleCS("shaders/SampleCs.hlsl");
+    sampleCS.LoadShader();
+    //Shader   
+    Shader shader("shaders/skybox.hlsl");
     shader.LoadShader();
+    Shader shader1("shaders/Lit.hlsl");
+    shader1.LoadShader();
+    Shader shader2("shaders/Lit.hlsl");
+    shader2.LoadShader();
+    Shader postShader("shaders/postprocess.hlsl");
+    postShader.LoadShader();
+    //创建材质
+
     Material mat;
+    Material mat1;
+    Material mat2;
+    Material pbrMat;
+    Material postprocessMat;
+    Material computeMat;
+
     mat.SetShader(&shader);
-    mat.Create();
+    mat1.SetShader(&shader1);
+    mat2.SetShader(&shader2);
+    pbrMat.SetShader(&shader1);
+    postprocessMat.SetShader(&postShader);
+    computeMat.SetComputeShader(&sampleCS);
+    
+    postprocessMat.DepthEnable = false;
+    mat2.SetValue<XMFLOAT4>(MaterialPropertyType::FLOAT4,"myFloat4", XMFLOAT4{0.5,0.2,0,0});
+    mat.SetValue<XMFLOAT4>(MaterialPropertyType::FLOAT4,"tempData", XMFLOAT4{0.2,0.7,0.2,0});
+    mat.SetTexture("tex01",&tex01);
+    mat.SetTexture("cubemap",&texCube);
+    mat1.SetTexture("tex01",&tex01);
+    mat1.SetValue<XMFLOAT4>(MaterialPropertyType::FLOAT4,"testcolor", XMFLOAT4{0.9,0.2,0.2,0});
+    pbrMat.SetTexture("_BaseMap",&albedoTex);
+    pbrMat.SetTexture("_MetallicMap",&metallicTex);
+    pbrMat.SetTexture("_RoughnessMap",&roughnessTex);
+    pbrMat.SetTexture("_NormalMap",&normalTex);
+
+    cmdbuffer.CmdList->Close();
+    ID3D12CommandList* lists[] = { cmdbuffer.CmdList.Get()};
+    currentContext.QueueDirect()->ExecuteCommandLists(1, lists);
+
+    currentContext.EndFrame();
+    currentContext.WaitForGpu();
+    //mesh01->ReleaseUploadBuffer();
+    //mesh02->ReleaseUploadBuffer();
+    //texture->ReleaseUploadBuffer();
+
+
+
+
+    std::unique_ptr<Camera> gameCamera = std::make_unique<Camera>();
+    g_gameCamera = gameCamera.get();
+    Scene scene;
+    scene.cameras.push_back(gameCamera.get());
+    gameCamera->SetPos(XMFLOAT3(-2,0,0));
+    GameObject obj0;
+    obj0.mesh = mesh01;
+    obj0.materials.push_back(& mat);
+    obj0.transform.SetScale({1000,1000,1000});
+    GameObject obj1;
+    obj1.mesh = mesh02;
+    obj1.materials.push_back(& mat1);
+    obj1.materials.push_back(& mat2);
+    obj1.transform.SetScale({0.01,0.01,0.01});
+    obj1.transform.SetRotation({XMConvertToRadians(90),0,0});
+    mat1.CullMode = D3D12_CULL_MODE_NONE;
+    postprocessMat.CullMode = D3D12_CULL_MODE_NONE;
+    postprocessMat.DepthTest = D3D12_COMPARISON_FUNC_ALWAYS;
+
+    GameObject obj2;
+    obj2.mesh = mesh01;
+    obj2.materials.push_back(& pbrMat);
+    obj2.transform.SetScale({0.01,0.01,0.01});
+    obj2.transform.SetPos({ -2, 0, 0 });
+
+    GameObject helmetObj;
+    helmetObj.mesh = helmetMesh;
+    helmetObj.materials.push_back(& pbrMat);
+    helmetObj.transform.SetScale({0.01,0.01,0.01});
+    helmetObj.transform.SetPos({ -3, 0, 0 });
+    helmetObj.transform.SetRotation({XMConvertToRadians(90),0,0});
+
+
+    OpaquePass opaquePass;
+    PostProcessPass postPass;
+    EnvironmetConvolovePass convolovePass;
+    ReadBackPass readBakcPass;
+    postPass.SetPostMaterial(&postprocessMat);
+    convolovePass.SetConvoloveMaterial(&computeMat);
+
 
     MSG msg{};
+    auto previousFrameTime = std::chrono::steady_clock::now();
     while (msg.message != WM_QUIT) {
         if (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
         else {
-            logicalDevice.BeginFrame();
-            CommandBuffer cmdbuffer = logicalDevice.GetCommandBufferPool()->AcquireCommandList(0,logicalDevice.FrameIndex(),CommandBufferPool::Type::DIRECT);
-            auto* cmdList = cmdbuffer.CmdList.Get();
-            // === 录制命令 ===
 
-            // 1. BackBuffer 从 PRESENT 状态过渡到 RENDER_TARGET（才能写）
-            D3D12_RESOURCE_BARRIER toRender{};
-            toRender.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-            toRender.Transition.pResource = logicalDevice.GetBackBuffer(logicalDevice.FrameIndex());
-            toRender.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
-            toRender.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-            toRender.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-            cmdList->ResourceBarrier(1, &toRender);
-
-            // 清屏
-            D3D12_CPU_DESCRIPTOR_HANDLE rtv = logicalDevice.RtvHeap()->DescResourceMap()[logicalDevice.GetBackBuffer(logicalDevice.FrameIndex())].handle;
-            float clearColor[] = { 0.2f, 0.4f, 0.6f, 1.0f };
-            cmdList->ClearRenderTargetView(rtv, clearColor, 0, nullptr);
-            D3D12_CPU_DESCRIPTOR_HANDLE dsv = logicalDevice.DsvHeap()->DescResourceMap()[depthbuffer.GetTexture()].handle;
-            // 新增：清深度（每帧重置为最远 1.0）
-            cmdList->ClearDepthStencilView(dsv,
-                D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-
-            // 绑定 RT + DSV（第四个参数传 DSV 句柄）
-            
-            cmdList->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
-
-
-
-            D3D12_VIEWPORT viewport{};
-            viewport.TopLeftX = 0;
-            viewport.TopLeftY = 0;
-            viewport.Width = logicalDevice.ScreenWidth;
-            viewport.Height = logicalDevice.ScreenHeight;
-            viewport.MinDepth = 0.0f;
-            viewport.MaxDepth = 1.0f;
-            cmdList->RSSetViewports(1, &viewport);
-
-            D3D12_RECT scissor{};
-            scissor.left = 0;
-            scissor.top = 0;
-            scissor.right = logicalDevice.ScreenWidth;
-            scissor.bottom = logicalDevice.ScreenHeight;
-            cmdList->RSSetScissorRects(1, &scissor);
-
-            cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-            logicalDevice.DrawMesh(cmdList, mesh01,&mat);
-            logicalDevice.DrawMesh(cmdList, mesh02,&mat);
-
-
-            // 3. 过渡回 PRESENT 状态（才能 Present 到屏幕）
-            D3D12_RESOURCE_BARRIER toPresent{};
-            toPresent.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-            toPresent.Transition.pResource = logicalDevice.GetBackBuffer(logicalDevice.FrameIndex());
-            toPresent.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-            toPresent.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
-            toPresent.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-            cmdList->ResourceBarrier(1, &toPresent);
-
-
-            cmdList->Close();
-            ID3D12CommandList* lists[] = {cmdList };
-            logicalDevice.QueueDirect()->ExecuteCommandLists(1, lists);
-            //cmdbuffer.Release();
-
-            logicalDevice.EndFrame();
-            // 阶段3：FPS 计数，每秒更新一次标题栏
-            g_frameCount++;
-            uint64_t now = GetTickCount64();
-            if (now - g_lastFpsTime >= 1000) {
-                uint32_t fps = (uint32_t)(g_frameCount * 1000 / (now - g_lastFpsTime));
-                wchar_t title[256];
-                swprintf_s(title, L"Minimal DX12 - FPS: %u  (%ux%u)",
-                    fps, logicalDevice.ScreenWidth, logicalDevice.ScreenHeight);
-                SetWindowText(g_hwnd, title);
-                g_frameCount = 0;
-                g_lastFpsTime = now;
+            const auto currentFrameTime = std::chrono::steady_clock::now();
+            float deltaTime = std::chrono::duration<float>(
+                currentFrameTime - previousFrameTime).count();
+            previousFrameTime = currentFrameTime;
+            // Avoid a large jump after a breakpoint, window drag, or pause.
+            deltaTime = std::clamp(deltaTime, 0.0f, 0.1f);
+            if (g_gameCamera)
+            {
+                UpdateCameraMovement(*g_gameCamera, deltaTime);
             }
+
+            //每帧更新逻辑,后面移走
+            currentContext.Update();
+            /*XMFLOAT3 rotation = obj0.transform.GetRotation();
+            rotation.z += 0.01;
+            obj0.transform.SetRotation(rotation);*/
+            ////////////////////////////////////////////////////
+
+
+            currentContext.BeginFrame();
+            imguiLayer.BeginFrame();
+            imguiLayer.DrawExampleWindow(deltaTime);
+
+            //DescPtr* rtDesc = &logicalDevice.RtvHeap()->DescResourceMap()[logicalDevice.GetBackBuffer(logicalDevice.FrameIndex())];
+            //DescPtr* depthDesc = &logicalDevice.DsvHeap()->DescResourceMap()[depthbuffer.GetTexture()];
+            //DescPtr* colorDesc = &logicalDevice.RtvHeap()->DescResourceMap()[colorbuffer.GetTexture()];
+            readBakcPass.ExecutePass(currentContext.QueueDirect());
+            opaquePass.SetRenderTaget(currentContext.colorbuffer.GetTexture(),currentContext.depthbuffer.GetTexture());
+            opaquePass.ExecutePass(currentContext.QueueDirect());
+            postPass.SetRenderTaget(currentContext.GetBackBuffer(currentContext.FrameIndex()),currentContext.depthbuffer.GetTexture());
+            postPass.ExecutePass(currentContext.QueueDirect());
+            convolovePass.ExecutePass(currentContext.QueueDirect());
+            imguiLayer.Render(currentContext);
+            currentContext.EndFrame();
+            //// 阶段3：FPS 计数，每秒更新一次标题栏
+            //g_frameCount++;
+            //uint64_t now = GetTickCount64();
+            //if (now - g_lastFpsTime >= 1000) {
+            //    uint32_t fps = (uint32_t)(g_frameCount * 1000 / (now - g_lastFpsTime));
+            //    wchar_t title[256];
+            //    swprintf_s(title, L"Minimal DX12 - FPS: %u  (%ux%u)",
+            //        fps, currentContext.ScreenWidth, currentContext.ScreenHeight);
+            //    SetWindowText(g_hwnd, title);
+            //    g_frameCount = 0;
+            //    g_lastFpsTime = now;
+            //}
         }
     }
 
-    //g_dx12.Shutdown();
+    g_gameCamera = nullptr;
+    currentContext.WaitForGpu();
+    imguiLayer.Shutdown();
+    currentContext.ShutDown();
+    //_CrtDumpMemoryLeaks();
     return 0;
 
 
-
-
-    //// 阶段3：先开 Debug Layer，再 Init
-    //DX12Context::EnableDebugLayer();
-    //// 初始化 DX12
-    //if (!g_dx12.Init(g_hwnd, kWidth, kHeight)) {
-    //    MessageBoxW(g_hwnd, L"DX12 Init Failed", L"Error", MB_ICONERROR);
-    //    return -1;
-    //}
-
-    //// 阶段6：创建 Root Signature + PSO
-    //if (!g_pipeline.Create(g_dx12.GetDevice())) {
-    //    MessageBoxW(g_hwnd, L"Pipeline Create Failed", L"Error", MB_ICONERROR);
-    //    return -1;
-    //}
-    //g_dx12.CreateDepthBuffer();  // 新增
-    //// 阶段5：上传顶点
-    //{
-    //    auto* cmdList = g_dx12.BeginFrame();
-    //    g_triangleFront.Upload(g_dx12.GetDevice(), cmdList, kFrontVertices, 3, kFrontIndices, 3);
-    //    g_triangleBack.Upload(g_dx12.GetDevice(), cmdList, kBackVertices, 3, kBackIndices, 3);
-    //    g_dx12.EndFrame();
-    //    g_dx12.WaitForGpu();
-    //    g_triangleFront.ReleaseTemporary();
-    //    g_triangleBack.ReleaseTemporary();
-    //}
-
-    //g_lastFpsTime = GetTickCount64();  // 新增
-    //// 消息循环（阶段2才会在 else 分支里加渲染）
-    //MSG msg{};
-    //while (msg.message != WM_QUIT) {
-    //    if (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
-    //        TranslateMessage(&msg);
-    //        DispatchMessage(&msg);
-    //    }
-    //    else {
-    //        auto* cmdList = g_dx12.BeginFrame();
-
-    //        // === 录制命令 ===
-
-    //        // 1. BackBuffer 从 PRESENT 状态过渡到 RENDER_TARGET（才能写）
-    //        D3D12_RESOURCE_BARRIER toRender{};
-    //        toRender.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    //        toRender.Transition.pResource = g_dx12.GetBackBuffer(g_dx12.GetFrameIndex());
-    //        toRender.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
-    //        toRender.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-    //        toRender.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-    //        cmdList->ResourceBarrier(1, &toRender);
-
-    //        // 清屏
-    //        D3D12_CPU_DESCRIPTOR_HANDLE rtv = g_dx12.GetCurrentBackBufferRTV();
-    //        float clearColor[] = { 0.2f, 0.4f, 0.6f, 1.0f };
-    //        cmdList->ClearRenderTargetView(rtv, clearColor, 0, nullptr);
-
-    //        // 新增：清深度（每帧重置为最远 1.0）
-    //        cmdList->ClearDepthStencilView(g_dx12.GetDSV(),
-    //            D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-
-    //        // 绑定 RT + DSV（第四个参数传 DSV 句柄）
-    //        D3D12_CPU_DESCRIPTOR_HANDLE dsv = g_dx12.GetDSV();
-    //        cmdList->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
-
-    //        // 设置管线状态
-    //        cmdList->SetGraphicsRootSignature(g_pipeline.GetRootSignature());
-    //        cmdList->SetPipelineState(g_pipeline.GetPSO());
-
-    //        D3D12_VIEWPORT viewport{};
-    //        viewport.TopLeftX = 0;
-    //        viewport.TopLeftY = 0;
-    //        viewport.Width = (float)g_dx12.GetWidth();
-    //        viewport.Height = (float)g_dx12.GetHeight();
-    //        viewport.MinDepth = 0.0f;
-    //        viewport.MaxDepth = 1.0f;
-    //        cmdList->RSSetViewports(1, &viewport);
-
-    //        D3D12_RECT scissor{};
-    //        scissor.left = 0;
-    //        scissor.top = 0;
-    //        scissor.right = g_dx12.GetWidth();
-    //        scissor.bottom = g_dx12.GetHeight();
-    //        cmdList->RSSetScissorRects(1, &scissor);
-
-    //        cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-    //        // 画两个三角形（顺序无所谓，深度测试会处理遮挡）
-    //        g_triangleFront.Draw(cmdList);
-    //        g_triangleBack.Draw(cmdList);
-    //        
-
-    //        // 3. 过渡回 PRESENT 状态（才能 Present 到屏幕）
-    //        D3D12_RESOURCE_BARRIER toPresent{};
-    //        toPresent.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    //        toPresent.Transition.pResource = g_dx12.GetBackBuffer(g_dx12.GetFrameIndex());
-    //        toPresent.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-    //        toPresent.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
-    //        toPresent.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-    //        cmdList->ResourceBarrier(1, &toPresent);
-
-    //        g_dx12.EndFrame();
-    //        // 阶段3：FPS 计数，每秒更新一次标题栏
-    //        g_frameCount++;
-    //        uint64_t now = GetTickCount64();
-    //        if (now - g_lastFpsTime >= 1000) {
-    //            uint32_t fps = (uint32_t)(g_frameCount * 1000 / (now - g_lastFpsTime));
-    //            wchar_t title[256];
-    //            swprintf_s(title, L"Minimal DX12 - FPS: %u  (%ux%u)",
-    //                fps, g_dx12.GetWidth(), g_dx12.GetHeight());
-    //            SetWindowText(g_hwnd, title);
-    //            g_frameCount = 0;
-    //            g_lastFpsTime = now;
-    //        }
-    //    }
-    //}
-
-    //g_dx12.Shutdown();
-    //return 0;
 }

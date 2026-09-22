@@ -1,18 +1,25 @@
 #pragma once
-#include <d3d12.h>
-#include <dxgi1_6.h>
-#include <wrl/client.h>
-#include <vector>
-#include <cassert>
-#include <memory>
-#include <string>
-#include <unordered_map>
 
+#include "Common.h"
 
-//#include "context.h"
 #include "Constants.h"
 #include "Log/Logs.h"
-using Microsoft::WRL::ComPtr;
+
+class ReadBackFunction;
+
+namespace DirectX
+{
+    struct Image;
+}
+UINT GetBitsPerPixel(DXGI_FORMAT fmt);
+
+void InitEngineResource();
+
+inline UINT GetPixelBytes(DXGI_FORMAT fmt)
+{
+    return GetBitsPerPixel(fmt)/8U;
+}
+
 
 class ResourceUtils
 {
@@ -30,14 +37,32 @@ public:
 		return (value + align - 1) & ~(align - 1);
 	}
 };
+class Resource;
+struct ResourceAndStatus
+{
+public:
+	Resource* resource;
+	D3D12_RESOURCE_STATES status;
+};
 
-class GraphicsDevice;
+class Context;
 class Resource
 {
 protected:
 	D3D12_RESOURCE_DESC m_desc = {};
 public :
-	static GraphicsDevice* m_device;
+	static Context* m_device;
+	inline static std::unordered_map<ID3D12Resource*, ResourceAndStatus> StatusMap{};
+	inline static ResourceAndStatus& FindResourceAndStatus(ID3D12Resource* ptr)
+	{
+		ResourceAndStatus result{};
+		auto status = Resource::StatusMap.find(ptr);
+        if (status == Resource::StatusMap.end())
+        {
+            return result;
+        }
+		return status->second;
+	}
 	Resource(){}
 	ID3D12Device* GetDevice() const;// { return m_device->DxDevice(); }
 	Resource(const Resource&) = delete;
@@ -48,9 +73,12 @@ public :
 	virtual D3D12_RESOURCE_DESC GetResourceDesc() { return m_desc; }
 };
 
+
+
 class Buffer : public Resource
 {
 public :
+	
 	Buffer(){}
 	Buffer(Buffer&&) = default;
 	virtual D3D12_GPU_VIRTUAL_ADDRESS GetAddress() const = 0;
@@ -58,36 +86,135 @@ public :
 	virtual ~Buffer() = default;
 };
 
+class ConstantBufferHeap : public Buffer
+{
+private :
+	ComPtr<ID3D12Resource> m_heap;
+	UINT m_heapSize;
+	void* m_basePointer;
+	UINT64 m_offset;
+public:
+	void init(UINT size = 256*262144);//64M
+	D3D12_GPU_VIRTUAL_ADDRESS GetAddress() const override
+	{
+		return m_heap?m_heap->GetGPUVirtualAddress():0;
+	}
+
+	size_t GetSize() const override
+	{
+		return m_heapSize;
+	}
+
+	UINT64 Offset()
+	{
+		return m_offset;
+	}
+
+	UINT64 WriteConstantBuffer(void* data,size_t size)
+	{
+		//todo: 需要判断之前的buffer有没有在用
+		if (((m_offset + size + 255) & ~255) >= m_heapSize)
+			m_offset = 0;
+		memcpy(static_cast<uint8_t*>(m_basePointer) + m_offset, data, size);
+		UINT64 temp = m_offset;
+		m_offset += size;
+		m_offset = (m_offset + 255) & ~255;
+		return temp;
+	}
+
+	/*void* GetCpuBasePointer()
+	{
+		return m_basePointer;
+	}*/
+
+	~ConstantBufferHeap()
+	{
+		m_heap->Unmap(0,nullptr);
+		m_basePointer = nullptr;
+	}
+};
+
+class ReadbackBufferHeap : public Buffer
+{
+private :
+	ComPtr<ID3D12Resource> m_heap;
+	UINT m_heapSize;
+	void* m_basePointer = nullptr;
+	UINT64 m_offset;
+public:
+	void init(UINT size = 256*262144);//64M
+
+	D3D12_GPU_VIRTUAL_ADDRESS GetAddress() const override
+	{
+		return m_heap?m_heap->GetGPUVirtualAddress():0;
+	}
+
+	void* GetPointer(UINT64 offset)
+	{
+		return (uint8_t*)m_basePointer + offset;
+	}
+
+	size_t GetSize() const override
+	{
+		return m_heapSize;
+	}
+
+	UINT64 Offset()
+	{
+		return m_offset;
+	}
+
+	
+	UINT64 CopyResourceSync(ReadBackFunction* data,ID3D12GraphicsCommandList* cmdlist);
+
+	~ReadbackBufferHeap()
+	{
+		m_heap->Unmap(0,nullptr);
+		m_basePointer = nullptr;
+	}
+};
+
+class DescriptorHeap;
+struct DescPtr
+{
+	DescriptorHeap* heap;
+	ID3D12Resource* resource;
+	D3D12_CPU_DESCRIPTOR_HANDLE cpuhandle;
+	D3D12_GPU_DESCRIPTOR_HANDLE gpuhandle;
+};
 
 class DescriptorHeap : public Resource
 {
 protected :
 
-	struct DescPtr
-	{
-		DescriptorHeap* heap;
-		D3D12_CPU_DESCRIPTOR_HANDLE handle;
-	};
+
 
 	ComPtr<ID3D12DescriptorHeap> m_heap;
 	D3D12_DESCRIPTOR_HEAP_DESC m_desc;
-	inline static std::unordered_map<ID3D12Resource*, DescPtr> m_DescResourceMap = {};
+	//inline static std::unordered_map<ID3D12Resource*, DescPtr> m_DescResourceMap = {};
 	inline static std::unordered_map<std::string, D3D12_CPU_DESCRIPTOR_HANDLE> m_NameHandleMap = {};
 public :
 				class ViewDesc
 				{
 				public:
-					D3D12_RENDER_TARGET_VIEW_DESC* RtView;
-					D3D12_DEPTH_STENCIL_VIEW_DESC* DsView;
-					D3D12_SHADER_RESOURCE_VIEW_DESC* SrView;		
+					union
+					{
+						D3D12_RENDER_TARGET_VIEW_DESC* RtView;
+						D3D12_DEPTH_STENCIL_VIEW_DESC* DsView;
+						D3D12_SHADER_RESOURCE_VIEW_DESC* SrView;
+						D3D12_UNORDERED_ACCESS_VIEW_DESC* UaView;
+					};
+							
 					ViewDesc(D3D12_RENDER_TARGET_VIEW_DESC* view) : RtView(view){}
 					ViewDesc(D3D12_DEPTH_STENCIL_VIEW_DESC* view) : DsView(view){}
 					ViewDesc(D3D12_SHADER_RESOURCE_VIEW_DESC* view) : SrView(view){}
+					ViewDesc(D3D12_UNORDERED_ACCESS_VIEW_DESC* view) : UaView(view){}
 				};
 	bool Created;
 	size_t Size;
-	D3D12_CPU_DESCRIPTOR_HANDLE Handle;
-	static std::unordered_map<ID3D12Resource*, DescPtr>& DescResourceMap() { return m_DescResourceMap; }
+	D3D12_CPU_DESCRIPTOR_HANDLE CpuHandle;
+	D3D12_GPU_DESCRIPTOR_HANDLE GpuHandle;
+	//static std::unordered_map<ID3D12Resource*, DescPtr>& DescResourceMap() { return m_DescResourceMap; }
 	static std::unordered_map<std::string, D3D12_CPU_DESCRIPTOR_HANDLE>& NameHandleMap() { return m_NameHandleMap; }
 	DescriptorHeap( D3D12_DESCRIPTOR_HEAP_DESC&& desc):m_desc(desc) 
 	{
@@ -96,11 +223,12 @@ public :
 		Created = true;
 		m_heap->SetName(L"DescriptorHeap" + m_desc.Type);
 		Size = GetDevice()->GetDescriptorHandleIncrementSize(desc.Type);
-		Handle = m_heap->GetCPUDescriptorHandleForHeapStart();
+		CpuHandle = m_heap->GetCPUDescriptorHandleForHeapStart();
+		GpuHandle = m_heap->GetGPUDescriptorHandleForHeapStart();
 	}
-
-	void Clear() {Handle = m_heap->GetCPUDescriptorHandleForHeapStart();}
-	virtual void CreateView(ID3D12Resource* resource,ViewDesc desc) = 0;
+	ID3D12DescriptorHeap* Heap() { return m_heap.Get(); }
+	void Clear() {CpuHandle = m_heap->GetCPUDescriptorHandleForHeapStart();}
+	virtual DescPtr CreateView(ID3D12Resource* resource,ViewDesc desc) = 0;
 
 	DescriptorHeap(DescriptorHeap&&) = default;
 	DescriptorHeap(const DescriptorHeap&) = delete;
@@ -125,7 +253,7 @@ public:
 
 	}
 
-	void CreateView(ID3D12Resource* resource, ViewDesc desc) override;
+	DescPtr CreateView(ID3D12Resource* resource, ViewDesc desc) override;
 
 };
 
@@ -144,7 +272,7 @@ public:
 
 	}
 
-	void CreateView(ID3D12Resource* resource, ViewDesc desc) override;
+	DescPtr CreateView(ID3D12Resource* resource, ViewDesc desc) override;
 };
 
 class SRVDescriptorHeap : public DescriptorHeap
@@ -161,7 +289,8 @@ public:
 
 	}
 
-	void CreateView(ID3D12Resource* resource, ViewDesc desc) override;
+	DescPtr CreateView(ID3D12Resource* resource, ViewDesc desc) override;
+	DescPtr CreateUAView(ID3D12Resource* resource, ViewDesc desc);
 };
 
 
@@ -264,27 +393,46 @@ public:
 //	ID3D12Heap* GetHeap
 //};
 
+enum class ViewType
+{
+	SRV = 0,
+	RTV,
+	UAV,
+	DSV,
+	Count
+};
+
 class TextureBuffer : public Buffer
 {
 protected :
 	ComPtr<ID3D12Resource> m_texture;
-
+	ComPtr<ID3D12Resource> tempUpload;
 public:
+	
 	UINT Width;
 	UINT Height;
-	UINT8 Dimension;
-	UINT8 Depth;
-	UINT8 MipLevels;
-	UINT8 MsaaCount;
+	UINT16 Dimension;
+	UINT16 Depth;
+	UINT16 MipLevels;
+	UINT16 SubresourceCount;
+	UINT16 MsaaCount;
+	D3D12_SRV_DIMENSION SrvDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	bool Srgb = false;
+	std::unique_ptr<uint8_t> TextureDataPointer;
+	std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> CPUHandles;
+	std::vector<D3D12_GPU_DESCRIPTOR_HANDLE> GPUHandles;
 	std::wstring Name;
-	DXGI_FORMAT Format;
+	DXGI_FORMAT Format = DXGI_FORMAT::DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 	
 	TextureBuffer()
 	{
 		Dimension = 2;
 		Depth = 1;
-		MipLevels = 0;
+		SubresourceCount = 1;
+		MipLevels = 1;
 		MsaaCount = 1;
+		CPUHandles.resize((int)ViewType::Count);
+		GPUHandles.resize((int)ViewType::Count);
 	}
 
 	ID3D12Resource* GetTexture()
@@ -292,29 +440,16 @@ public:
 		return m_texture.Get();
 	}
 
-	virtual void CreateTexture()
+	virtual void CreateTexture();	
+
+	void UploadTexture(uint8_t* textureData,ID3D12GraphicsCommandList* cmdList);
+	void UploadTexture(const Image* images, ID3D12GraphicsCommandList* cmdList);
+	void ReleaseUploadBuffer() { tempUpload.Reset(); };
+	void Release()
 	{
-		m_desc.Dimension = Dimension == 2?D3D12_RESOURCE_DIMENSION_TEXTURE2D:D3D12_RESOURCE_DIMENSION_TEXTURE3D;
-		m_desc.Width = Width;
-		m_desc.Height = Height;
-		m_desc.DepthOrArraySize = Depth;
-		m_desc.MipLevels = MipLevels;
-		m_desc.Format = Format;
-		m_desc.SampleDesc.Count = MsaaCount;
-		m_desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-		m_desc.Flags = D3D12_RESOURCE_FLAG_NONE;
-
-		D3D12_HEAP_PROPERTIES defaultHeap{};
-		defaultHeap.Type = D3D12_HEAP_TYPE_DEFAULT;
-		defaultHeap.CreationNodeMask = 1;
-		defaultHeap.VisibleNodeMask = 1;
-
-		GetDevice()->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE,
-        &m_desc, D3D12_RESOURCE_STATE_COMMON, nullptr,
-        IID_PPV_ARGS(&m_texture));
-		
+		tempUpload.Reset();
+		m_texture.Reset();
 	}
-
 	D3D12_GPU_VIRTUAL_ADDRESS GetAddress() const override
 	{
 		if (m_texture)
@@ -325,6 +460,8 @@ public:
 	{
 		return 0;
 	}
+	static TextureBuffer& GetDefaultWhiteTex();
+	static TextureBuffer& GetDefaultNormalTex();
 };
 
 class DepthTextureBuffer : public TextureBuffer
@@ -332,4 +469,68 @@ class DepthTextureBuffer : public TextureBuffer
 public :
 	void CreateTexture() override;
 	
+};
+
+class RenderTextureBuffer : public TextureBuffer
+{
+public :
+	bool AllowMipmap = false;
+	bool AllowUAV = false;
+	void CreateTexture() override;
+	
+};
+
+//class Texture2D : public TextureBuffer
+//{
+//public :
+//	void LoadTexture();
+//	void CreateTexture() override;
+//	void UPloadTexture();
+//};
+
+class StructureBuffer : public Buffer
+{
+protected :
+	ComPtr<ID3D12Resource> m_buffer;
+	ComPtr<ID3D12Resource> tempUpload;
+public:
+	
+	UINT Width;
+	UINT Stride;
+	bool ReadWrite = false;
+
+	std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> CPUHandles;
+	std::vector<D3D12_GPU_DESCRIPTOR_HANDLE> GPUHandles;
+	std::wstring Name;
+	
+	StructureBuffer()
+	{
+		CPUHandles.resize((int)ViewType::Count);
+		GPUHandles.resize((int)ViewType::Count);
+	}
+
+	ID3D12Resource* GetBuffer()
+	{
+		return m_buffer.Get();
+	}
+
+	void CreateBuffer();	
+
+	void UploadBuffer(uint8_t* data,ID3D12GraphicsCommandList* cmdList);
+
+	void ReleaseUploadBuffer() { tempUpload.Reset(); };
+	void Release()
+	{
+		tempUpload.Reset();
+		m_buffer.Reset();
+	}
+	D3D12_GPU_VIRTUAL_ADDRESS GetAddress() const override
+	{
+		return m_buffer->GetGPUVirtualAddress();;
+	}
+
+	size_t GetSize() const override
+	{
+		return Width * Stride;
+	}
 };
