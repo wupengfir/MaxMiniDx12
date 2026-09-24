@@ -318,6 +318,30 @@ void CubemapConvolovePass::ExecutePass(ID3D12CommandQueue* queue)
 
 
         XMMATRIX identity = XMMatrixIdentity();
+        XMMATRIX faceRotate;
+        switch (i)
+        {
+            case 0 :
+                faceRotate = identity;
+            break;
+            case 1 :
+                faceRotate = XMMatrixRotationY(XMConvertToRadians(180));
+            break;
+            case 2 :
+                faceRotate = XMMatrixRotationY(XMConvertToRadians(-90));
+            break;
+            case 3 :
+                faceRotate = XMMatrixRotationY(XMConvertToRadians(90));
+            break;
+            case 4 :
+                faceRotate = XMMatrixRotationZ(XMConvertToRadians(90));
+            break;
+            case 5 :
+                faceRotate = XMMatrixRotationZ(XMConvertToRadians(-90));
+            break;
+
+        }
+        m_cubeMapConvoloveMaterial->SetValue(MaterialPropertyType::FLOAT4x4, "_FaceRotateMatrix", faceRotate);
         Context::pContext->DrawMesh(cmdList,TestResource::QuadMesh,0,m_cubeMapConvoloveMaterial, &(identity), Scene::CurrentScene->cameras[0],formats);
 
 
