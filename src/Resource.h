@@ -480,6 +480,18 @@ public :
 	
 };
 
+class CubemapRenderTextureBuffer : public RenderTextureBuffer
+{
+public:
+	CubemapRenderTextureBuffer():RenderTextureBuffer()
+	{
+		Depth = 6;
+		CPUHandles.resize((int)ViewType::Count*Depth);
+		GPUHandles.resize((int)ViewType::Count*Depth);
+	}
+	void CreateTexture() override;
+};
+
 //class Texture2D : public TextureBuffer
 //{
 //public :

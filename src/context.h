@@ -70,12 +70,16 @@ private :
 
 	bool useDebug;
 public :
+
+	inline static RenderSetting GlobalSetting{};
+	inline static Context* pContext = nullptr;
+	static void SetRenderTarget(ID3D12GraphicsCommandList* cmdList,TextureBuffer* rt,bool clear,DXGI_RGBA clearColor,TextureBuffer* depth = nullptr,bool clearDepth = true,float clearDepthValue = 1);
+
 	UINT ScreenWidth;
 	UINT ScreenHeight;
 	DepthTextureBuffer depthbuffer;
     RenderTextureBuffer colorbuffer;
-	inline static RenderSetting GlobalSetting{};
-	static inline Context* pContext = nullptr;
+	
 	void SyncGPU(UINT64 signal);
 	void BeginFrame();  
     void EndFrame();                          // 关闭+提交+Present+Signal

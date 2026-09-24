@@ -525,7 +525,7 @@ UINT64 ReadbackBufferHeap::CopyResourceSync(ReadBackFunction* data,ID3D12Graphic
         barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
         barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
         cmdList->ResourceBarrier(1, &barrier);
-		StatusMap[GetTexture()] = {this,D3D12_RESOURCE_STATE_COMMON};
+		StatusMap[GetTexture()] = {this,D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE};
 	}
 
 	TextureBuffer& TextureBuffer::GetDefaultWhiteTex()
@@ -700,4 +700,75 @@ void StructureBuffer::CreateBuffer()
 		GPUHandles[(int)ViewType::SRV] = descPtr.gpuhandle;
 	}
 	StatusMap[GetBuffer()] = {this,D3D12_RESOURCE_STATE_COMMON};
+}
+
+void CubemapRenderTextureBuffer::CreateTexture()
+{
+
+	m_desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	m_desc.Width = Width;
+	m_desc.Height = Height;
+	m_desc.DepthOrArraySize = 6;
+	m_desc.MipLevels = AllowMipmap?0:1;
+	m_desc.Format = Format;
+	m_desc.SampleDesc.Count = MsaaCount;
+	m_desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	m_desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+	if(AllowUAV)
+		m_desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+	D3D12_HEAP_PROPERTIES defaultHeap{};
+	defaultHeap.Type = D3D12_HEAP_TYPE_DEFAULT;
+	defaultHeap.CreationNodeMask = 1;
+	defaultHeap.VisibleNodeMask = 1;
+
+
+	D3D12_CLEAR_VALUE clearValue{};
+	clearValue.Format = Format;
+	clearValue.Color[0] = 0; 
+	clearValue.Color[1] = 0;
+	clearValue.Color[2] = 0;
+	clearValue.Color[3] = 0;
+
+	GetDevice()->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE,
+    &m_desc, D3D12_RESOURCE_STATE_RENDER_TARGET, &clearValue,
+    IID_PPV_ARGS(&m_texture));
+
+		
+
+	{
+		for (int i = 0; i < 6; i++)
+		{
+			//rt view
+			D3D12_RENDER_TARGET_VIEW_DESC sdDesc = {};
+			sdDesc.Format = Format;
+			sdDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DARRAY;
+			sdDesc.Texture2DArray.MipSlice = 0;
+			sdDesc.Texture2DArray.FirstArraySlice = i;
+			sdDesc.Texture2DArray.ArraySize = 1;
+			DescriptorHeap::ViewDesc viewdesc(&sdDesc);
+			DescPtr descPtr = m_device->RtvHeap()->CreateView(m_texture.Get(), viewdesc);
+			CPUHandles[(int)ViewType::RTV + (int)ViewType::Count * i] = descPtr.cpuhandle;
+			GPUHandles[(int)ViewType::RTV + (int)ViewType::Count * i] = descPtr.gpuhandle;
+		}
+		
+	}
+	{
+		//srv view
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		srvDesc.Format = Format;
+		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+		srvDesc.Texture2D.MostDetailedMip = 0;      // 从最详细的Mip 0开始
+		srvDesc.Texture2D.MipLevels = -1;           // 使用从 MostDetailedMip 开始的所有剩余Mip层级
+		srvDesc.Texture2D.ResourceMinLODClamp = 0.0f; // 不对LOD进行限制
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		DescriptorHeap::ViewDesc viewdesc(&srvDesc);
+		DescPtr descPtr = m_device->SrvHeap()->CreateView(m_texture.Get(),viewdesc);
+		CPUHandles[(int)ViewType::SRV] = descPtr.cpuhandle;
+		GPUHandles[(int)ViewType::SRV] = descPtr.gpuhandle;
+	}
+
+
+	m_texture->SetName(L"CubeRenderBuffer");
+	StatusMap[GetTexture()] = {this,D3D12_RESOURCE_STATE_RENDER_TARGET};
+
 }

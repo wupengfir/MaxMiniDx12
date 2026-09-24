@@ -7,6 +7,61 @@ Context::Context(bool useDebugLayer):useDebug(useDebugLayer)
     
 }
 
+void Context::SetRenderTarget(ID3D12GraphicsCommandList* cmdList,TextureBuffer* rt,bool clear,DXGI_RGBA clearColor,TextureBuffer* depth,bool clearDepth,float clearDepthValue)
+{
+    ID3D12Resource* colorResource = rt->GetTexture();
+    auto colorstatus = Resource::StatusMap.find(colorResource);
+    if (colorstatus == Resource::StatusMap.end())
+    {
+        return;
+    }
+    if (colorstatus->second.status != D3D12_RESOURCE_STATE_RENDER_TARGET)
+    {
+        // 1. BackBuffer 从 PRESENT 状态过渡到 RENDER_TARGET（才能写）
+        D3D12_RESOURCE_BARRIER toRender{};
+        toRender.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        toRender.Transition.pResource = colorResource;
+        //toRender.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+        toRender.Transition.StateBefore = colorstatus->second.status;
+        toRender.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        toRender.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        cmdList->ResourceBarrier(1, &toRender);
+        colorstatus->second.status = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    }
+	        
+
+    // 清屏
+    D3D12_CPU_DESCRIPTOR_HANDLE rtv = ((TextureBuffer*)Resource::FindResourceAndStatus(colorResource).resource)->CPUHandles[(int)ViewType::RTV];// m_Color->cpuhandle;
+    cmdList->ClearRenderTargetView(rtv, &clearColor.r, 0, nullptr);            
+    if (depth)
+    {
+        D3D12_CPU_DESCRIPTOR_HANDLE dsv = ((TextureBuffer*)Resource::FindResourceAndStatus(depth->GetTexture()).resource)->CPUHandles[(int)ViewType::DSV];// m_Depth->cpuhandle;   
+        cmdList->ClearDepthStencilView(dsv,D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+        cmdList->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
+    }
+    else
+    {
+        cmdList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+    }
+    
+
+    D3D12_VIEWPORT viewport{};
+    viewport.TopLeftX = 0;
+    viewport.TopLeftY = 0;
+    viewport.Width = colorResource->GetDesc().Width;
+    viewport.Height = colorResource->GetDesc().Height;
+    viewport.MinDepth = 0.0f;
+    viewport.MaxDepth = 1.0f;
+    cmdList->RSSetViewports(1, &viewport);
+
+    D3D12_RECT scissor{};
+    scissor.left = 0;
+    scissor.top = 0;
+    scissor.right = colorResource->GetDesc().Width;
+    scissor.bottom = colorResource->GetDesc().Height;
+    cmdList->RSSetScissorRects(1, &scissor);
+}
+
 void Context::SyncGPU(UINT64 signal)
 {
 	if (signal > 0 && m_fence->GetCompletedValue() < signal) {
@@ -219,6 +274,24 @@ void Context::DrawMesh(ID3D12GraphicsCommandList* cmdList,Mesh* mesh,int submesh
                 MaterialProperty* property = mat->FindProperty(param.name);
                 if (property)
                 {
+
+                    auto colorstatus = Resource::StatusMap.find(property->texture->GetTexture());
+                    if (colorstatus != Resource::StatusMap.end())
+                    {
+                        if (colorstatus->second.status != D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE)
+                        {
+                            D3D12_RESOURCE_BARRIER toPresent{};
+                            toPresent.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+                            toPresent.Transition.pResource = property->texture->GetTexture();
+                            toPresent.Transition.StateBefore = colorstatus->second.status;
+                            toPresent.Transition.StateAfter = D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
+                            toPresent.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+                            cmdList->ResourceBarrier(1, &toPresent);
+                            colorstatus->second.status = D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
+                        }
+                    }
+                     
+
                    cmdList->SetGraphicsRootDescriptorTable(slotIndex,property->texture->GPUHandles[int(ViewType::SRV)]);
                    slotIndex++;
                 }
@@ -328,6 +401,24 @@ void Context::Dispatch(ID3D12GraphicsCommandList* cmdList,Material* mat,UINT x,U
                 MaterialProperty* property = mat->FindProperty(param.name);
                 if (property)
                 {
+                   
+                    auto colorstatus = Resource::StatusMap.find(property->buffer->GetBuffer());
+                    if (colorstatus != Resource::StatusMap.end())
+                    {
+                        D3D12_RESOURCE_STATES targetState = property->buffer->ReadWrite ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS : D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
+                        if (colorstatus->second.status != targetState)
+                        {
+                            D3D12_RESOURCE_BARRIER toPresent{};
+                            toPresent.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+                            toPresent.Transition.pResource = property->buffer->GetBuffer();
+                            toPresent.Transition.StateBefore = colorstatus->second.status;
+                            toPresent.Transition.StateAfter = targetState;
+                            toPresent.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+                            cmdList->ResourceBarrier(1, &toPresent);
+                            colorstatus->second.status = targetState;
+                        }
+                    }
+                    
                    cmdList->SetComputeRootDescriptorTable(slotIndex,property->buffer->GPUHandles[int(ViewType::SRV)]);
                    slotIndex++;
                 }                
@@ -443,7 +534,6 @@ bool Context::Init(HWND hwnd, uint32_t width, uint32_t height)
 		DescriptorHeap::ViewDesc viewdesc(&rtDesc);
 
         m_swapChainViews[i] = m_RtvHeap->CreateView(m_backBuffers[i].Get(),viewdesc);
-
     }
 
     // 8. Fence + Win32 Event：GPU 完成后通过 Event 通知 CPU

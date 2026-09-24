@@ -5,18 +5,19 @@
 class DescPtr;
 class Material;
 class StructureBuffer;
-
+class TextureBuffer;
+class CubemapRenderTextureBuffer;
 class RenderPass
 {
 protected:
-	ID3D12Resource* m_Color;	
-	ID3D12Resource* m_Depth;
+	TextureBuffer* m_Color;	
+	TextureBuffer* m_Depth;
 	UINT m_ColorRtCount;
-	std::vector<D3D12_RESOURCE_DESC> m_ColorDescs{};
-	D3D12_RESOURCE_DESC m_DepthDesc{};
+	//std::vector<D3D12_RESOURCE_DESC> m_ColorDescs{};
+	//D3D12_RESOURCE_DESC m_DepthDesc{};
 public:
 	UINT cameraIndex = 0;
-	void SetRenderTaget(ID3D12Resource* rt, ID3D12Resource* depth);
+	void SetRenderTaget(TextureBuffer* rt, TextureBuffer* depth);
 	virtual void ExecutePass(ID3D12CommandQueue* queue) = 0;
 };
 
@@ -34,6 +35,21 @@ private :
 public:
 	void SetPostMaterial(Material* mat) { m_postprocessMaterial = mat; }
 	void ExecutePass(ID3D12CommandQueue* queue) override ;
+};
+
+class CubemapConvolovePass : public RenderPass
+{
+private :	
+	CubemapRenderTextureBuffer* m_cubeMap;
+	Material* m_cubeMapConvoloveMaterial;
+public:
+	CubemapConvolovePass();
+	void SetConvoloveMaterial(Material* mat) { m_cubeMapConvoloveMaterial = mat; }
+	void ExecutePass(ID3D12CommandQueue* queue) override ;
+	~CubemapConvolovePass()
+	{
+		delete m_cubeMap;
+	}
 };
 
 class EnvironmetConvolovePass : public RenderPass

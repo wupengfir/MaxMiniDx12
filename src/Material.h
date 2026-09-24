@@ -406,7 +406,6 @@ protected:
     std::vector<uint8_t> m_buffer{};
     ComPtr<ID3D12Resource> m_bufferResource;
 public:
-
     D3D12_CULL_MODE CullMode = D3D12_CULL_MODE_FRONT;
     D3D12_COMPARISON_FUNC DepthTest = D3D12_COMPARISON_FUNC_LESS_EQUAL;
     bool DepthEnable = true;
@@ -434,6 +433,11 @@ public:
     {
         auto it = m_MaterialProperties.find(name);
         if (it != m_MaterialProperties.end())
+        {
+            return &(it->second);
+        }
+        it = m_GlobalProperties.find(name);
+        if (it != m_GlobalProperties.end())
         {
             return &(it->second);
         }
@@ -494,30 +498,28 @@ public:
 
     }
 
+    template<typename T>
+    inline static void SetGlobalValue(MaterialPropertyType type,const std::string name, T data)
+    {
+        MaterialProperty property{};
+        property.type = type;
+        property.size = sizeof(T);
+        property.offset = m_buffer.size();
+        if (property.data)
+            delete[] property.data;
+        property.data = new uint8_t[property.size];
+        memcpy(property.data, &data, property.size);
+        m_GlobalProperties[name] = std::move(property);
+
+    }
+
     void SetTexture(const std::string name, TextureBuffer* texture,ID3D12GraphicsCommandList* cmdList = nullptr)
     {
         MaterialProperty property{};
         property.type = MaterialPropertyType::Texture;
         property.texture = texture;
          m_MaterialProperties[name] = property;
-         if (cmdList)
-         {
-            auto colorstatus = Resource::StatusMap.find(texture->GetTexture());
-            if (colorstatus != Resource::StatusMap.end())
-            {
-                if (colorstatus->second.status != D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE)
-                {
-                    D3D12_RESOURCE_BARRIER toPresent{};
-                    toPresent.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-                    toPresent.Transition.pResource = texture->GetTexture();
-                    toPresent.Transition.StateBefore = colorstatus->second.status;
-                    toPresent.Transition.StateAfter = D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
-                    toPresent.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-                    cmdList->ResourceBarrier(1, &toPresent);
-                    colorstatus->second.status = D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
-                }
-            }
-         }
+         
     }
 
     void SetBuffer(const std::string name, StructureBuffer* buffer,ID3D12GraphicsCommandList* cmdList = nullptr)
@@ -526,25 +528,25 @@ public:
         property.type = MaterialPropertyType::Buffer;
         property.buffer = buffer;
          m_MaterialProperties[name] = property;
-         if (cmdList)
-         {
-            auto colorstatus = Resource::StatusMap.find(buffer->GetBuffer());
-            if (colorstatus != Resource::StatusMap.end())
-            {
-                D3D12_RESOURCE_STATES targetState = buffer->ReadWrite ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS : D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
-                if (colorstatus->second.status != targetState)
-                {
-                    D3D12_RESOURCE_BARRIER toPresent{};
-                    toPresent.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-                    toPresent.Transition.pResource = buffer->GetBuffer();
-                    toPresent.Transition.StateBefore = colorstatus->second.status;
-                    toPresent.Transition.StateAfter = targetState;
-                    toPresent.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-                    cmdList->ResourceBarrier(1, &toPresent);
-                    colorstatus->second.status = targetState;
-                }
-            }
-         }
+         
+    }
+
+    inline static void SetGlobalTexture(const std::string name, TextureBuffer* texture,ID3D12GraphicsCommandList* cmdList = nullptr)
+    {
+        MaterialProperty property{};
+        property.type = MaterialPropertyType::Texture;
+        property.texture = texture;
+         m_GlobalProperties[name] = property;
+        
+    }
+
+    inline static void SetGlobalBuffer(const std::string name, StructureBuffer* buffer,ID3D12GraphicsCommandList* cmdList = nullptr)
+    {
+        MaterialProperty property{};
+        property.type = MaterialPropertyType::Buffer;
+        property.buffer = buffer;
+         m_GlobalProperties[name] = property;
+        
     }
 
 };

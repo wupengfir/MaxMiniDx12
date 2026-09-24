@@ -313,6 +313,8 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
     shader2.LoadShader();
     Shader postShader("shaders/postprocess.hlsl");
     postShader.LoadShader();
+    Shader cubeMapConvoloveShader("shaders/CubeMapConvolove.shader");
+    cubeMapConvoloveShader.LoadShader();
     //创建材质
 
     Material mat;
@@ -321,6 +323,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
     Material pbrMat;
     Material postprocessMat;
     Material computeMat;
+    Material cubeMapConvoloveMaterial;
 
     mat.SetShader(&shader);
     mat1.SetShader(&shader1);
@@ -328,7 +331,9 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
     pbrMat.SetShader(&shader1);
     postprocessMat.SetShader(&postShader);
     computeMat.SetComputeShader(&sampleCS);
-    
+    cubeMapConvoloveMaterial.SetShader(&cubeMapConvoloveShader);
+
+
     postprocessMat.DepthEnable = false;
     mat2.SetValue<XMFLOAT4>(MaterialPropertyType::FLOAT4,"myFloat4", XMFLOAT4{0.5,0.2,0,0});
     mat.SetValue<XMFLOAT4>(MaterialPropertyType::FLOAT4,"tempData", XMFLOAT4{0.2,0.7,0.2,0});
@@ -340,6 +345,12 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
     pbrMat.SetTexture("_MetallicMap",&metallicTex);
     pbrMat.SetTexture("_RoughnessMap",&roughnessTex);
     pbrMat.SetTexture("_NormalMap",&normalTex);
+    cubeMapConvoloveMaterial.SetTexture("cubemap",&texCube);
+    cubeMapConvoloveMaterial.CullMode = D3D12_CULL_MODE_NONE;
+    cubeMapConvoloveMaterial.DepthEnable = false;
+    mat1.CullMode = D3D12_CULL_MODE_NONE;
+    postprocessMat.CullMode = D3D12_CULL_MODE_NONE;
+    postprocessMat.DepthTest = D3D12_COMPARISON_FUNC_ALWAYS;
 
     cmdbuffer.CmdList->Close();
     ID3D12CommandList* lists[] = { cmdbuffer.CmdList.Get()};
@@ -369,9 +380,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
     obj1.materials.push_back(& mat2);
     obj1.transform.SetScale({0.01,0.01,0.01});
     obj1.transform.SetRotation({XMConvertToRadians(90),0,0});
-    mat1.CullMode = D3D12_CULL_MODE_NONE;
-    postprocessMat.CullMode = D3D12_CULL_MODE_NONE;
-    postprocessMat.DepthTest = D3D12_COMPARISON_FUNC_ALWAYS;
+    
 
     GameObject obj2;
     obj2.mesh = mesh01;
@@ -391,9 +400,10 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
     PostProcessPass postPass;
     EnvironmetConvolovePass convolovePass;
     ReadBackPass readBakcPass;
+    CubemapConvolovePass cubemapConvolovePass;
     postPass.SetPostMaterial(&postprocessMat);
     convolovePass.SetConvoloveMaterial(&computeMat);
-
+    cubemapConvolovePass.SetConvoloveMaterial(&cubeMapConvoloveMaterial);
 
     MSG msg{};
     auto previousFrameTime = std::chrono::steady_clock::now();
@@ -431,11 +441,12 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
             //DescPtr* depthDesc = &logicalDevice.DsvHeap()->DescResourceMap()[depthbuffer.GetTexture()];
             //DescPtr* colorDesc = &logicalDevice.RtvHeap()->DescResourceMap()[colorbuffer.GetTexture()];
             readBakcPass.ExecutePass(currentContext.QueueDirect());
-            opaquePass.SetRenderTaget(currentContext.colorbuffer.GetTexture(),currentContext.depthbuffer.GetTexture());
+            opaquePass.SetRenderTaget(&currentContext.colorbuffer,&currentContext.depthbuffer);
             opaquePass.ExecutePass(currentContext.QueueDirect());
-            postPass.SetRenderTaget(currentContext.GetBackBuffer(currentContext.FrameIndex()),currentContext.depthbuffer.GetTexture());
+            postPass.SetRenderTaget(nullptr,&currentContext.depthbuffer);
             postPass.ExecutePass(currentContext.QueueDirect());
             convolovePass.ExecutePass(currentContext.QueueDirect());
+            cubemapConvolovePass.ExecutePass(currentContext.QueueDirect());
             imguiLayer.Render(currentContext);
             currentContext.EndFrame();
             //// 阶段3：FPS 计数，每秒更新一次标题栏
