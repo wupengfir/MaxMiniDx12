@@ -107,7 +107,7 @@ void PostProcessPass::ExecutePass(ID3D12CommandQueue* queue)
 	cmdList->SetDescriptorHeaps(1, ppHeaps);
 
     DXGI_FORMAT formats[8] = {};
-    formats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+    formats[0] = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 
     ID3D12Resource* colorAttachment = Context::pContext->GetBackBuffer(Context::pContext->FrameIndex());
     // 1. BackBuffer 从 PRESENT 状态过渡到 RENDER_TARGET（才能写）
@@ -155,6 +155,7 @@ void PostProcessPass::ExecutePass(ID3D12CommandQueue* queue)
         return;
     }
     m_postprocessMaterial->SetTexture("_ColorAttachment",reinterpret_cast<TextureBuffer*>(colorstatus->second.resource),cmdList); 
+	m_postprocessMaterial->SetValue<float>(MaterialPropertyType::FLOAT, "_Exposure", Context::GlobalSetting.Exposure);
     XMMATRIX identity = XMMatrixIdentity();
     Context::pContext->DrawMesh(cmdList,TestResource::QuadMesh,0,m_postprocessMaterial, &(identity), Scene::CurrentScene->cameras[0],formats);
     //
@@ -287,11 +288,11 @@ void CubemapConvolovePass::ExecutePass(ID3D12CommandQueue* queue)
             // 清屏
         DXGI_RGBA clearColor{};
         D3D12_CPU_DESCRIPTOR_HANDLE rtv = ((TextureBuffer*)Resource::FindResourceAndStatus(colorResource).resource)->CPUHandles[(int)ViewType::RTV + (int)ViewType::Count*i ];
-        cmdList->ClearRenderTargetView(rtv, &clearColor.r, 0, nullptr);            
+        //cmdList->ClearRenderTargetView(rtv, &clearColor.r, 0, nullptr);            
         if (m_Depth)
         {
             D3D12_CPU_DESCRIPTOR_HANDLE dsv = ((TextureBuffer*)Resource::FindResourceAndStatus(m_Depth->GetTexture()).resource)->CPUHandles[(int)ViewType::DSV];// m_Depth->cpuhandle;   
-            cmdList->ClearDepthStencilView(dsv,D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+            //cmdList->ClearDepthStencilView(dsv,D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
             cmdList->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
         }
         else
@@ -322,22 +323,22 @@ void CubemapConvolovePass::ExecutePass(ID3D12CommandQueue* queue)
         switch (i)
         {
             case 0 :
-                faceRotate = identity;
-            break;
-            case 1 :
-                faceRotate = XMMatrixRotationY(XMConvertToRadians(180));
-            break;
-            case 2 :
-                faceRotate = XMMatrixRotationY(XMConvertToRadians(-90));
-            break;
-            case 3 :
                 faceRotate = XMMatrixRotationY(XMConvertToRadians(90));
             break;
+            case 1 :
+                faceRotate = XMMatrixRotationY(XMConvertToRadians(-90));
+            break;
+            case 2 :
+                faceRotate = XMMatrixRotationX(XMConvertToRadians(-90));
+            break;
+            case 3 :
+                faceRotate = XMMatrixRotationX(XMConvertToRadians(90));
+            break;
             case 4 :
-                faceRotate = XMMatrixRotationZ(XMConvertToRadians(90));
+                faceRotate = XMMatrixRotationY(XMConvertToRadians(0));
             break;
             case 5 :
-                faceRotate = XMMatrixRotationZ(XMConvertToRadians(-90));
+                faceRotate = XMMatrixRotationY(XMConvertToRadians(180));
             break;
 
         }

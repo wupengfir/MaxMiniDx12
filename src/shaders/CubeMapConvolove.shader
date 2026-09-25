@@ -1,11 +1,10 @@
 #include "Common.hlsl"
-
+#include "Sample.hlsl"
 
 
 Texture2D tex01;
 TextureCube cubemap;
 SamplerState sampler_linear_clamp;
-float4 tempData;
 float4x4 _FaceRotateMatrix;
 struct VSInput
 {
@@ -26,14 +25,17 @@ PSInput VS(VSInput input)
     o.pos = float4(input.pos, 1.0);
     o.color = input.color;
     o.uv = input.uv;
-    //input.pos.y*=-1;
-    o.wDir = mul(_FaceRotateMatrix,float4(1,-input.pos.x,input.pos.y,0)).xyz;
+    o.wDir = mul(_FaceRotateMatrix,float4(input.pos.x,input.pos.y,1,0)).xyz;
     return o;
 }
 float4 PS(PSInput input) : SV_TARGET
 {
-    //input.wDir = mul(_FaceRotateMatrix,float4(input.wDir,0)).xyz;
-   // float4 color = tex01.SampleLevel(sampler_linear_clamp,input.uv.xy,5);
-    float4 color = cubemap.Sample(sampler_linear_clamp,input.wDir.xzy);
-    return float4(color.xyz*1, 1.0); 
+    float2 seed = input.uv.xy + float2(_Time.w * 0.131, _Time.w * 0.279);
+    float2 xi = hash22(seed);
+    input.wDir = normalize(input.wDir);
+    float3 L = SampleCosineHemisphere(xi, input.wDir);
+    float4 origin = cubemap.Sample(sampler_linear_clamp,input.wDir);
+    float4 color = cubemap.Sample(sampler_linear_clamp,L);
+    color = lerp(origin,color,saturate(_Time.z*0.05));
+    return float4(color.xyz, 0.01); 
 }

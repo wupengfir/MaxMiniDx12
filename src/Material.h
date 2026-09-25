@@ -409,7 +409,7 @@ public:
     D3D12_CULL_MODE CullMode = D3D12_CULL_MODE_FRONT;
     D3D12_COMPARISON_FUNC DepthTest = D3D12_COMPARISON_FUNC_LESS_EQUAL;
     bool DepthEnable = true;
-
+    bool BlendEnable = false;
     D3D12_GRAPHICS_PIPELINE_STATE_DESC& PsoDesc() { return m_psoDesc; }
     D3D12_COMPUTE_PIPELINE_STATE_DESC& ComputePsoDesc() { return m_computePsoDesc; }
 	ComPtr<ID3D12RootSignature>& GetRootSignature() { return m_rootSig; }

@@ -7,6 +7,7 @@
 #include "Resource.h"
 #include "Constants.h"
 #include "Material.h"
+#include <chrono>
 using Microsoft::WRL::ComPtr;
 
 inline static UINT GlobalID = 0;
@@ -21,6 +22,40 @@ inline static UINT PropertyToID(std::string name)
 	return GlobalID++;
 }
 
+class Timer
+{
+private:
+	std::chrono::high_resolution_clock::time_point m_startTime;
+	std::chrono::high_resolution_clock::time_point m_prevFrameTime;
+public:
+	Timer() : m_startTime(std::chrono::high_resolution_clock::now()) {}
+	void Reset() 
+	{ 
+		m_startTime = std::chrono::high_resolution_clock::now(); 
+		m_prevFrameTime = std::chrono::high_resolution_clock::now();
+	}
+
+	void CountTime()
+	{
+		m_prevFrameTime = std::chrono::high_resolution_clock::now();
+	}
+
+	float DeltaTime() const
+	{
+		auto now = std::chrono::high_resolution_clock::now();
+		return std::chrono::duration<float>(now - m_prevFrameTime).count();
+	}
+	double ElapsedSeconds() const
+	{
+		auto now = std::chrono::high_resolution_clock::now();
+		return std::chrono::duration<double>(now - m_startTime).count();
+	}
+	double ElapsedMilliseconds() const
+	{
+		auto now = std::chrono::high_resolution_clock::now();
+		return std::chrono::duration<double, std::milli>(now - m_startTime).count();
+	}
+};
 
 
 class ConstantBufferHeap;
@@ -79,7 +114,8 @@ public :
 	UINT ScreenHeight;
 	DepthTextureBuffer depthbuffer;
     RenderTextureBuffer colorbuffer;
-	
+	Timer timer;
+	UINT FrameCount = 0;
 	void SyncGPU(UINT64 signal);
 	void BeginFrame();  
     void EndFrame();                          // 关闭+提交+Present+Signal

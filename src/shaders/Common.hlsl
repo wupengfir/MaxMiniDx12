@@ -17,6 +17,7 @@ cbuffer PerFrame : register(b2)
 {
 	float4 _MainLightDirection;
 	float4 _MainLightColor;
+    float4 _Time; // x = time, y = sin(time), z = cos(time), w = deltaTime
 }
 #endif
 

@@ -122,6 +122,20 @@ bool Material::Create()
 		m_psoDesc.RasterizerState.CullMode = CullMode;
 		m_psoDesc.RasterizerState.DepthClipEnable = TRUE;
 		m_psoDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+		if (BlendEnable)
+		{
+			auto& rtBlend = m_psoDesc.BlendState.RenderTarget[0];
+			rtBlend.BlendEnable = TRUE;
+			rtBlend.LogicOpEnable = FALSE;
+
+			rtBlend.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+			rtBlend.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+			rtBlend.BlendOp = D3D12_BLEND_OP_ADD;
+
+			rtBlend.SrcBlendAlpha = D3D12_BLEND_SRC_ALPHA;
+			rtBlend.DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
+			rtBlend.BlendOpAlpha = D3D12_BLEND_OP_ADD;
+		}
 		m_psoDesc.DepthStencilState.DepthEnable = DepthEnable;
 		m_psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
 		m_psoDesc.DepthStencilState.DepthFunc = DepthTest;  // 深度小的（近）通过

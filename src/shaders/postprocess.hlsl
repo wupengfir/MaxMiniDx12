@@ -1,15 +1,12 @@
 #include "Common.hlsl"
 
-cbuffer MyConstants 
+cbuffer PerMaterial 
 {
-    float myFloat;      
-    float4 myFloat4;    
-    float4x4 myMatrix;  
+    float _Exposure;
 };
 
 Texture2D _ColorAttachment;
 SamplerState sampler_linear_clamp;
-float4 tempData;
 struct VSInput
 {
     float3 pos : POSITION;
@@ -38,7 +35,7 @@ float4 PS(PSInput input) : SV_TARGET
 
 
     //tonemap
-    color.xyz = ACESFilmic(color.xyz);
+    color.xyz = ACESFilmic(color.xyz * exp2(_Exposure));
 
     return float4(color.xyz*1, 1.0); 
 }

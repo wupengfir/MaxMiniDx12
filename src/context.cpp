@@ -119,6 +119,10 @@ void Context::Update()
 }
 
 void Context::BeginFrame() {
+
+    FrameCount++;
+	timer.CountTime();
+
     // 拿到当前要写的 backbuffer 下标
     m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 
@@ -232,7 +236,10 @@ void Context::DrawMesh(ID3D12GraphicsCommandList* cmdList,Mesh* mesh,int submesh
                 memcpy(param.AlignedConstantBuffer+value.StartOffset,&dir,value.Size);
                 value = param.bufferDataDescs[1]; 
                 memcpy(param.AlignedConstantBuffer+value.StartOffset,&GlobalSetting.MainLightColor,value.Size);
-
+                value = param.bufferDataDescs[2];
+				float deltaTime = Context::pContext->timer.DeltaTime(); 
+                XMVECTOR time = { deltaTime ,sin(deltaTime),Context::pContext->timer.ElapsedSeconds(),Context::pContext->FrameCount};
+                memcpy(param.AlignedConstantBuffer + value.StartOffset, &time, value.Size);
                 auto offset = CBufferHeap()->WriteConstantBuffer(param.AlignedConstantBuffer,param.alignedCBufferSize);
                 cmdList->SetGraphicsRootConstantBufferView(slotIndex,CBufferHeap()->GetAddress() + offset);
                 slotIndex++;
@@ -528,7 +535,7 @@ bool Context::Init(HWND hwnd, uint32_t width, uint32_t height)
             return false;
         }
         D3D12_RENDER_TARGET_VIEW_DESC rtDesc = {};
-		rtDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		rtDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 		rtDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
 		rtDesc.Texture2D.MipSlice = 0;
 		DescriptorHeap::ViewDesc viewdesc(&rtDesc);

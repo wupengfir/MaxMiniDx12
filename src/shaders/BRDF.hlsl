@@ -1,7 +1,7 @@
 #ifndef BRDF
 #define BRDF
 #define PI 3.14159265359
-
+#include "GlobalIllumination.hlsl"
 //====================================================================
 // UE PBR 核心函数
 //====================================================================
@@ -57,7 +57,7 @@ float3 Specular_CookTorrance(float3 F0, float roughness, float NoV, float NoL, f
 
 // UE 主BRDF入口：金属粗糙度
 float3 UE_PBR_BRDF(float3 BaseColor, float Metallic, float Roughness,
-                   float3 N, float3 V, float3 L)
+                   float3 N, float3 V, float3 L,float3 irradiance,GIInput gi)
 {
     Roughness = max(Roughness, 0.025); // UE最小粗糙度，防止高光奇点
 
@@ -74,7 +74,7 @@ float3 UE_PBR_BRDF(float3 BaseColor, float Metallic, float Roughness,
 
     float3 diffuse = Diffuse_Burley(diffColor, Roughness, NoV, NoL, VoH);
     float3 specular = Specular_CookTorrance(F0, Roughness, NoV, NoL, NoH, VoH);
-
-    return (diffuse + specular) * NoL;
+    float3 ibl = PBR_GlobalIllumination(diffColor, F0, gi);
+    return (diffuse + specular) * NoL * irradiance + ibl;
 }
 #endif

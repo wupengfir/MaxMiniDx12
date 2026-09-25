@@ -28,8 +28,8 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(
 
 
 static HWND          g_hwnd = nullptr;
-static const uint32_t kWidth  = 1280;
-static const uint32_t kHeight = 720;
+static const uint32_t kWidth  = 1920;
+static const uint32_t kHeight = 1080;
 // FPS 计数
 static uint64_t g_frameCount = 0;
 static Camera* g_gameCamera = nullptr;
@@ -275,8 +275,9 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
     Texture tex01;
     tex01.LoadTexture(L"resource/texture/1.tga",true,true);
     tex01.UploadTexture(tex01.GetImage(), cmdbuffer.CmdList.Get());
+
     Texture texCube;
-    texCube.LoadTexture(L"resource/texture/simons_town_rocks_skybox.dds",true,false);
+    texCube.LoadTexture(L"resource/texture/sky_cube.dds",true,false);
     texCube.UploadTexture(texCube.GetImage(), cmdbuffer.CmdList.Get());
 
     Texture albedoTex;
@@ -295,6 +296,18 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
     normalTex.LoadTexture(L"resource/texture/1k/SFSHelmet_norm.png",true,false);
     normalTex.UploadTexture(normalTex.GetImage(), cmdbuffer.CmdList.Get());
 
+    Texture iblIrradianceTex;
+    iblIrradianceTex.LoadTexture(L"resource/texture/ibl_irradiance_cube.dds", true, false);
+    iblIrradianceTex.UploadTexture(iblIrradianceTex.GetImage(), cmdbuffer.CmdList.Get());
+
+    Texture iblSpecularIrradianceTex;
+    iblSpecularIrradianceTex.LoadTexture(L"resource/texture/ibl_specular_cube.dds", true, false);
+    iblSpecularIrradianceTex.UploadTexture(iblSpecularIrradianceTex.GetImage(), cmdbuffer.CmdList.Get());
+
+    Texture iblBrdfTex;
+    iblBrdfTex.LoadTexture(L"resource/texture/brdf_look_up_table.dds", true, false);
+    iblBrdfTex.UploadTexture(iblBrdfTex.GetImage(), cmdbuffer.CmdList.Get());
+
     /*StructureBuffer uavBuffer;
     uavBuffer.ReadWrite = true;
     uavBuffer.Width = 256;
@@ -307,10 +320,8 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
     //Shader   
     Shader shader("shaders/skybox.hlsl");
     shader.LoadShader();
-    Shader shader1("shaders/Lit.hlsl");
-    shader1.LoadShader();
-    Shader shader2("shaders/Lit.hlsl");
-    shader2.LoadShader();
+    Shader litShader("shaders/Lit.Shader");
+    litShader.LoadShader();
     Shader postShader("shaders/postprocess.hlsl");
     postShader.LoadShader();
     Shader cubeMapConvoloveShader("shaders/CubeMapConvolove.shader");
@@ -326,9 +337,9 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
     Material cubeMapConvoloveMaterial;
 
     mat.SetShader(&shader);
-    mat1.SetShader(&shader1);
-    mat2.SetShader(&shader2);
-    pbrMat.SetShader(&shader1);
+    mat1.SetShader(&litShader);
+    mat2.SetShader(&litShader);
+    pbrMat.SetShader(&litShader);
     postprocessMat.SetShader(&postShader);
     computeMat.SetComputeShader(&sampleCS);
     cubeMapConvoloveMaterial.SetShader(&cubeMapConvoloveShader);
@@ -345,10 +356,16 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
     pbrMat.SetTexture("_MetallicMap",&metallicTex);
     pbrMat.SetTexture("_RoughnessMap",&roughnessTex);
     pbrMat.SetTexture("_NormalMap",&normalTex);
+    pbrMat.SetTexture("_IrradianceMap", &iblIrradianceTex);
+    pbrMat.SetTexture("_ReflectionMap", &iblSpecularIrradianceTex);
+    pbrMat.SetTexture("_BrdfMap", &iblBrdfTex);
     cubeMapConvoloveMaterial.SetTexture("cubemap",&texCube);
     cubeMapConvoloveMaterial.CullMode = D3D12_CULL_MODE_NONE;
     cubeMapConvoloveMaterial.DepthEnable = false;
+    cubeMapConvoloveMaterial.BlendEnable = true;
     mat1.CullMode = D3D12_CULL_MODE_NONE;
+
+    postprocessMat.DepthEnable = false;
     postprocessMat.CullMode = D3D12_CULL_MODE_NONE;
     postprocessMat.DepthTest = D3D12_COMPARISON_FUNC_ALWAYS;
 

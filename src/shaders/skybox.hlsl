@@ -38,6 +38,6 @@ PSInput VS(VSInput input)
 float4 PS(PSInput input) : SV_TARGET
 {
    // float4 color = tex01.SampleLevel(sampler_linear_clamp,input.uv.xy,5);
-    float4 color = generateCubemap.Sample(sampler_linear_clamp,normalize(input.wPos.xzy - _CameraPos.xzy));
-    return float4(color.xyz*1, 1.0); 
+    float4 color = cubemap.Sample(sampler_linear_clamp, normalize(input.wPos.xzy - _CameraPos.xzy));
+    return float4(color.xyz, 1.0); 
 }

@@ -19,18 +19,18 @@ target_include_directories(MinimalDX12 PRIVATE
 
 target_link_libraries(MinimalDX12 PRIVATE Microsoft::DirectXTex)
 target_link_libraries(MinimalDX12 PRIVATE assimp::assimp)
-target_link_libraries(MinimalDX12 PRIVATE 
+target_link_libraries(MinimalDX12 PRIVATE  
     imgui::imgui
-
+     
 )
-target_link_libraries(MinimalDX12 PRIVATE
-    d3d12.lib    # DX12 核心
+target_link_libraries(MinimalDX12 PRIVATE  
+    d3d12.lib    # DX12 核心  
     dxgi.lib     # SwapChain
     dxguid.lib   # GUID
     user32.lib   # 窗口
     gdi32.lib    # 窗口
     d3dcompiler.lib
-)
+) 
 
 target_compile_definitions(MinimalDX12 PRIVATE
     UNICODE _UNICODE       # 宽字符
