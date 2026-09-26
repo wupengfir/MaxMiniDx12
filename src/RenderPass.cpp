@@ -107,7 +107,7 @@ void PostProcessPass::ExecutePass(ID3D12CommandQueue* queue)
 	cmdList->SetDescriptorHeaps(1, ppHeaps);
 
     DXGI_FORMAT formats[8] = {};
-    formats[0] = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+    formats[0] = DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
 
     ID3D12Resource* colorAttachment = Context::pContext->GetBackBuffer(Context::pContext->FrameIndex());
     // 1. BackBuffer 从 PRESENT 状态过渡到 RENDER_TARGET（才能写）
@@ -241,12 +241,18 @@ void ReadBackPass::ExecutePass(ID3D12CommandQueue* queue)
 
 CubemapConvolovePass::CubemapConvolovePass()
 {
-    m_cubeMap = new CubemapRenderTextureBuffer();
-    m_cubeMap->Width = 256;
-    m_cubeMap->Height = 256;
-    m_cubeMap->Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
-    m_cubeMap->CreateTexture();
-    m_Color = m_cubeMap;
+    m_diffuseIrradiance = new CubemapRenderTextureBuffer();
+    m_diffuseIrradiance->Width = 64;
+    m_diffuseIrradiance->Height = 64;
+    m_diffuseIrradiance->Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    m_diffuseIrradiance->CreateTexture();
+    m_reflectIrradiance = new CubemapRenderTextureBuffer();
+    m_reflectIrradiance->Width = 512;
+    m_reflectIrradiance->Height = 512;
+    m_reflectIrradiance->AllowMipmap = true;
+    m_reflectIrradiance->Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    m_reflectIrradiance->CreateTexture();
+    m_Color = m_diffuseIrradiance;
     m_Depth = nullptr;
 }
 
@@ -261,7 +267,7 @@ void CubemapConvolovePass::ExecutePass(ID3D12CommandQueue* queue)
     DXGI_FORMAT formats[8] = {};
     formats[0] = m_Color->Format;
 
-
+	m_Color = m_diffuseIrradiance;
     ID3D12Resource* colorResource = m_Color->GetTexture();
     auto colorstatus = Resource::StatusMap.find(colorResource);
     if (colorstatus == Resource::StatusMap.end())
@@ -347,9 +353,94 @@ void CubemapConvolovePass::ExecutePass(ID3D12CommandQueue* queue)
 
 
     }
-
     colorstatus->second.status = D3D12_RESOURCE_STATE_RENDER_TARGET;
-    Material::SetGlobalTexture("generateCubemap",m_Color);
+
+    //反射部分
+	m_Color = m_reflectIrradiance;
+    colorResource = m_Color->GetTexture();
+    colorstatus = Resource::StatusMap.find(colorResource);
+    if (colorstatus == Resource::StatusMap.end())
+    {
+        return;
+    }
+    if (colorstatus->second.status != D3D12_RESOURCE_STATE_RENDER_TARGET)
+    {
+        // 1. BackBuffer 从 PRESENT 状态过渡到 RENDER_TARGET（才能写）
+        D3D12_RESOURCE_BARRIER toRender{};
+        toRender.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        toRender.Transition.pResource = colorResource;
+        //toRender.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+        toRender.Transition.StateBefore = colorstatus->second.status;
+        toRender.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        toRender.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        cmdList->ResourceBarrier(1, &toRender);
+    }
+
+    for (int mip = 0; mip < m_Color->GetTexture()->GetDesc().MipLevels; mip++)
+    {
+        for (int i = 0; i < 6; i++)
+        {
+            DXGI_RGBA clearColor{};
+            int index = (int)ViewType::Count * m_Color->Depth * mip + (int)ViewType::RTV + (int)ViewType::Count * i;
+            D3D12_CPU_DESCRIPTOR_HANDLE rtv = ((TextureBuffer*)Resource::FindResourceAndStatus(colorResource).resource)->CPUHandles[index];
+            cmdList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+
+
+            cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            D3D12_VIEWPORT viewport{};
+            viewport.TopLeftX = 0;
+            viewport.TopLeftY = 0;
+            viewport.Width = m_Color->GetTexture()->GetDesc().Width >> mip;
+            viewport.Height = m_Color->GetTexture()->GetDesc().Height >> mip;
+            viewport.MinDepth = 0.0f;
+            viewport.MaxDepth = 1.0f;
+            cmdList->RSSetViewports(1, &viewport);
+
+            D3D12_RECT scissor{};
+            scissor.left = 0;
+            scissor.top = 0;
+            scissor.right = m_Color->GetTexture()->GetDesc().Width >> mip;
+            scissor.bottom = m_Color->GetTexture()->GetDesc().Height >> mip;
+            cmdList->RSSetScissorRects(1, &scissor);
+
+
+            XMMATRIX identity = XMMatrixIdentity();
+            XMMATRIX faceRotate;
+            switch (i)
+            {
+            case 0:
+                faceRotate = XMMatrixRotationY(XMConvertToRadians(90));
+                break;
+            case 1:
+                faceRotate = XMMatrixRotationY(XMConvertToRadians(-90));
+                break;
+            case 2:
+                faceRotate = XMMatrixRotationX(XMConvertToRadians(-90));
+                break;
+            case 3:
+                faceRotate = XMMatrixRotationX(XMConvertToRadians(90));
+                break;
+            case 4:
+                faceRotate = XMMatrixRotationY(XMConvertToRadians(0));
+                break;
+            case 5:
+                faceRotate = XMMatrixRotationY(XMConvertToRadians(180));
+                break;
+
+            }
+            m_reflectConvoloveMaterial->SetValue(MaterialPropertyType::FLOAT4x4, "_FaceRotateMatrix", faceRotate);
+            m_reflectConvoloveMaterial->SetValue(MaterialPropertyType::FLOAT,"_Roughness", ((float)mip)/m_Color->GetTexture()->GetDesc().MipLevels);
+            Context::pContext->DrawMesh(cmdList, TestResource::QuadMesh, 0, m_reflectConvoloveMaterial, &(identity), Scene::CurrentScene->cameras[0], formats);
+
+
+        }
+    }
+    
+    colorstatus->second.status = D3D12_RESOURCE_STATE_RENDER_TARGET;
+
+
+    Material::SetGlobalTexture("_GeneratedIrradiancemap",m_diffuseIrradiance);
+    Material::SetGlobalTexture("_GeneratedReflectionmap", m_reflectIrradiance);
     cmdList->Close();
     ID3D12CommandList* lists[] = {cmdList };
     queue->ExecuteCommandLists(1, lists);

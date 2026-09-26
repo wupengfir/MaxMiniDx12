@@ -34,8 +34,8 @@ float4 PS(PSInput input) : SV_TARGET
     float2 xi = hash22(seed);
     input.wDir = normalize(input.wDir);
     float3 L = SampleCosineHemisphere(xi, input.wDir);
-    float4 origin = cubemap.Sample(sampler_linear_clamp,input.wDir);
+    //float4 origin = cubemap.Sample(sampler_linear_clamp,input.wDir);
     float4 color = cubemap.Sample(sampler_linear_clamp,L);
-    color = lerp(origin,color,saturate(_Time.z*0.05));
+    //color = lerp(origin,color,saturate(_Time.z*0.05));
     return float4(color.xyz, 0.01); 
 }

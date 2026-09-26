@@ -519,7 +519,7 @@ bool Context::Init(HWND hwnd, uint32_t width, uint32_t height)
     scDesc.BufferCount = FRAME_BACKBUFFER_COUNT;
     scDesc.Width       = width;
     scDesc.Height      = height;
-    scDesc.Format      = DXGI_FORMAT_R8G8B8A8_UNORM;
+    scDesc.Format      = DXGI_FORMAT_B8G8R8A8_UNORM;
     scDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     scDesc.SwapEffect  = DXGI_SWAP_EFFECT_FLIP_DISCARD;
     scDesc.SampleDesc.Count = 1;
@@ -535,7 +535,7 @@ bool Context::Init(HWND hwnd, uint32_t width, uint32_t height)
             return false;
         }
         D3D12_RENDER_TARGET_VIEW_DESC rtDesc = {};
-		rtDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+		rtDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
 		rtDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
 		rtDesc.Texture2D.MipSlice = 0;
 		DescriptorHeap::ViewDesc viewdesc(&rtDesc);

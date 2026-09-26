@@ -20,8 +20,8 @@ struct RenderSetting
 	float PrevRenderScale = 1;
 	float RenderScale = 1;
 	float Exposure = 0;
-	XMFLOAT4 MainLightDirection{0,0,1,0};
-	XMFLOAT4 MainLightColor{8,8,6,0};
+	XMFLOAT4 MainLightDirection{0,1,1,0};
+	XMFLOAT4 MainLightColor{0,0,0,0};
 };
 
 	template<typename T>

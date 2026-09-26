@@ -40,15 +40,21 @@ public:
 class CubemapConvolovePass : public RenderPass
 {
 private :	
-	CubemapRenderTextureBuffer* m_cubeMap;
+	CubemapRenderTextureBuffer* m_diffuseIrradiance;
+	CubemapRenderTextureBuffer* m_reflectIrradiance;
 	Material* m_cubeMapConvoloveMaterial;
+	Material* m_reflectConvoloveMaterial;
 public:
 	CubemapConvolovePass();
 	void SetConvoloveMaterial(Material* mat) { m_cubeMapConvoloveMaterial = mat; }
+	void SetReflectConvoloveMaterial(Material* mat) { m_reflectConvoloveMaterial = mat; }
 	void ExecutePass(ID3D12CommandQueue* queue) override ;
 	~CubemapConvolovePass()
 	{
-		delete m_cubeMap;
+		if(m_diffuseIrradiance)
+			delete m_diffuseIrradiance;
+		if (m_reflectIrradiance)
+			delete m_reflectIrradiance;
 	}
 };
 

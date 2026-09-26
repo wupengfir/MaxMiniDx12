@@ -67,4 +67,50 @@ float2 hash22(float2 p)
     p += dot(p, p.yx + 34.23);
     return frac(float2(p.x * p.y, p.x + p.y));
 }
+
+// R2 序列（黄金比例序列）常量
+static const float GOLDEN_RATIO = 1.32471795724474602596f;
+static const float R2_A1 = 0.7548776662466927f; // 1/φ
+static const float R2_A2 = 0.5698402909980532f; // 1/φ²
+
+// 生成第 index 个 R2 采样点，返回 [0,1)² 区间
+float2 R2Sequence(uint index)
+{
+    float2 v;
+    v.x = frac(0.5f + R2_A1 * (float) (index + 1));
+    v.y = frac(0.5f + R2_A2 * (float) (index + 1));
+    return v;
+}
+float2 R2Sequence(uint index, float2 offset)
+{
+    float2 v;
+    v.x = frac(0.5f + R2_A1 * (float) (index + 1) + offset.x);
+    v.y = frac(0.5f + R2_A2 * (float) (index + 1) + offset.y);
+    return v;
+}
+// 使用像素坐标和帧号作为种子，得到每像素每帧稳定的低差异采样
+float2 R2SequencePerPixel(uint2 pixelCoord, uint frameIndex, float2 offset)
+{
+    // 把像素坐标和帧号组合成一个索引，避免像素间出现相关性
+    uint index = pixelCoord.x + pixelCoord.y * 1920u + frameIndex * 1920u * 1080u;
+    return R2Sequence(index, offset);
+}
+
+// Radical inverse base 2 (van der Corput)
+float RadicalInverse_VdC(uint bits)
+{
+    bits = (bits << 16u) | (bits >> 16u);
+    bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+    bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+    bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+    bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+    return float(bits) * 2.3283064365386963e-10; // 1 / 2^32
+}
+
+// Hammersley: i = sample index, N = total sample count
+float2 Hammersley(uint i, uint N)
+{
+    return float2(float(i) / float(N), RadicalInverse_VdC(i));
+}
+
 #endif

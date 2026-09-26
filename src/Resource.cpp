@@ -708,7 +708,7 @@ void CubemapRenderTextureBuffer::CreateTexture()
 	m_desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 	m_desc.Width = Width;
 	m_desc.Height = Height;
-	m_desc.DepthOrArraySize = 6;
+	m_desc.DepthOrArraySize = Depth;
 	m_desc.MipLevels = AllowMipmap?0:1;
 	m_desc.Format = Format;
 	m_desc.SampleDesc.Count = MsaaCount;
@@ -733,22 +733,24 @@ void CubemapRenderTextureBuffer::CreateTexture()
     &m_desc, D3D12_RESOURCE_STATE_RENDER_TARGET, &clearValue,
     IID_PPV_ARGS(&m_texture));
 
-		
-
+	int mipCount = m_texture.Get()->GetDesc().MipLevels;
+	CPUHandles.resize((int)ViewType::Count * Depth * mipCount);
+	GPUHandles.resize((int)ViewType::Count * Depth * mipCount);
+	for(int mip = 0;mip < mipCount;mip++)
 	{
-		for (int i = 0; i < 6; i++)
+		for (int i = 0; i < Depth; i++)
 		{
 			//rt view
 			D3D12_RENDER_TARGET_VIEW_DESC sdDesc = {};
 			sdDesc.Format = Format;
 			sdDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DARRAY;
-			sdDesc.Texture2DArray.MipSlice = 0;
+			sdDesc.Texture2DArray.MipSlice = mip;
 			sdDesc.Texture2DArray.FirstArraySlice = i;
 			sdDesc.Texture2DArray.ArraySize = 1;
 			DescriptorHeap::ViewDesc viewdesc(&sdDesc);
 			DescPtr descPtr = m_device->RtvHeap()->CreateView(m_texture.Get(), viewdesc);
-			CPUHandles[(int)ViewType::RTV + (int)ViewType::Count * i] = descPtr.cpuhandle;
-			GPUHandles[(int)ViewType::RTV + (int)ViewType::Count * i] = descPtr.gpuhandle;
+			CPUHandles[(int)ViewType::Count * Depth * mip + (int)ViewType::RTV + (int)ViewType::Count * i] = descPtr.cpuhandle;
+			GPUHandles[(int)ViewType::Count * Depth * mip + (int)ViewType::RTV + (int)ViewType::Count * i] = descPtr.gpuhandle;
 		}
 		
 	}

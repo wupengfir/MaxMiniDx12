@@ -422,7 +422,7 @@ public:
 	std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> CPUHandles;
 	std::vector<D3D12_GPU_DESCRIPTOR_HANDLE> GPUHandles;
 	std::wstring Name;
-	DXGI_FORMAT Format = DXGI_FORMAT::DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+	DXGI_FORMAT Format = DXGI_FORMAT::DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
 	
 	TextureBuffer()
 	{
@@ -486,8 +486,7 @@ public:
 	CubemapRenderTextureBuffer():RenderTextureBuffer()
 	{
 		Depth = 6;
-		CPUHandles.resize((int)ViewType::Count*Depth);
-		GPUHandles.resize((int)ViewType::Count*Depth);
+		
 	}
 	void CreateTexture() override;
 };

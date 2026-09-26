@@ -16,8 +16,12 @@ Texture2D _MetallicMap;
 Texture2D _RoughnessMap;
 Texture2D _BrdfMap;
 TextureCube _IrradianceMap;
-TextureCube generateCubemap;
+
 TextureCube _ReflectionMap;
+
+TextureCube _GeneratedIrradiancemap;
+TextureCube _GeneratedReflectionmap;
+
 SamplerState sampler_linear_clamp;
 float4 tempData;
 struct VSInput
@@ -65,9 +69,9 @@ float4 PS(PSInput input) : SV_TARGET
 
     //采样注意坐标系
     GIInput giInput;
-    giInput.diffuseIrradiance = _IrradianceMap.Sample(sampler_linear_clamp,normalWS.xzy).xyz;
+    giInput.diffuseIrradiance = _GeneratedIrradiancemap.Sample(sampler_linear_clamp, normalWS.xzy).xyz;
     float3 reflectDir = reflect(-viewDir, normalWS);
-    giInput.reflecIrradiance = _ReflectionMap.SampleLevel(sampler_linear_clamp,reflectDir.xzy,roughness * MAX_REFLECTION_LOD).xyz;
+    giInput.reflecIrradiance = _GeneratedReflectionmap.SampleLevel(sampler_linear_clamp, reflectDir.xzy, roughness * MAX_REFLECTION_LOD).xyz;
     giInput.iblBrdf = _BrdfMap.Sample(sampler_linear_clamp,float2(saturate(dot(normalWS, viewDir)), roughness)).rg;
     float3 color = UE_PBR_BRDF(albedo,metallic,roughness*roughness,normalWS,viewDir,_MainLightDirection,_MainLightColor.xyz,giInput);
 

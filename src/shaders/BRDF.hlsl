@@ -11,7 +11,7 @@ float D_GGX(float NoH, float a)
 {
     float a2 = a * a;
     float denom = NoH * NoH * (a2 - 1.0) + 1.0;
-    return a2 / (PI * denom * denom);
+    return a2 / max(1e-6, (PI * denom * denom));
 }
 
 // Smith-Schlick 几何项 G，UE 对GGX的优化版本

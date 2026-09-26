@@ -315,7 +315,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
     uavBuffer.CreateBuffer();*/
 
     //Compute Shader
-    ComputeShader sampleCS("shaders/SampleCs.hlsl");
+    ComputeShader sampleCS("shaders/SampleCs.compute");
     sampleCS.LoadShader();
     //Shader   
     Shader shader("shaders/skybox.hlsl");
@@ -326,6 +326,8 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
     postShader.LoadShader();
     Shader cubeMapConvoloveShader("shaders/CubeMapConvolove.shader");
     cubeMapConvoloveShader.LoadShader();
+    Shader cubeMapReflectionConvoloveShader("shaders/CubeMapReflectionConvolove.shader");
+    cubeMapReflectionConvoloveShader.LoadShader();
     //创建材质
 
     Material mat;
@@ -335,6 +337,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
     Material postprocessMat;
     Material computeMat;
     Material cubeMapConvoloveMaterial;
+    Material cubeMapReflectionConvoloveMaterial;
 
     mat.SetShader(&shader);
     mat1.SetShader(&litShader);
@@ -343,7 +346,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
     postprocessMat.SetShader(&postShader);
     computeMat.SetComputeShader(&sampleCS);
     cubeMapConvoloveMaterial.SetShader(&cubeMapConvoloveShader);
-
+    cubeMapReflectionConvoloveMaterial.SetShader(&cubeMapReflectionConvoloveShader);
 
     postprocessMat.DepthEnable = false;
     mat2.SetValue<XMFLOAT4>(MaterialPropertyType::FLOAT4,"myFloat4", XMFLOAT4{0.5,0.2,0,0});
@@ -363,6 +366,13 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
     cubeMapConvoloveMaterial.CullMode = D3D12_CULL_MODE_NONE;
     cubeMapConvoloveMaterial.DepthEnable = false;
     cubeMapConvoloveMaterial.BlendEnable = true;
+
+    cubeMapReflectionConvoloveMaterial.SetTexture("cubemap", &texCube);
+    cubeMapReflectionConvoloveMaterial.CullMode = D3D12_CULL_MODE_NONE;
+    cubeMapReflectionConvoloveMaterial.DepthEnable = false;
+    cubeMapReflectionConvoloveMaterial.BlendEnable = true;
+
+
     mat1.CullMode = D3D12_CULL_MODE_NONE;
 
     postprocessMat.DepthEnable = false;
@@ -421,6 +431,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
     postPass.SetPostMaterial(&postprocessMat);
     convolovePass.SetConvoloveMaterial(&computeMat);
     cubemapConvolovePass.SetConvoloveMaterial(&cubeMapConvoloveMaterial);
+    cubemapConvolovePass.SetReflectConvoloveMaterial(&cubeMapReflectionConvoloveMaterial);
 
     MSG msg{};
     auto previousFrameTime = std::chrono::steady_clock::now();
