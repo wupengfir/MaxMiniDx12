@@ -397,15 +397,18 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
     Scene scene;
     scene.cameras.push_back(gameCamera.get());
     gameCamera->SetPos(XMFLOAT3(-2,0,0));
+
     GameObject obj0;
     obj0.mesh = mesh01;
     obj0.materials.push_back(& mat);
     obj0.transform.SetScale({1000,1000,1000});
+
     GameObject obj1;
     obj1.mesh = mesh02;
     obj1.materials.push_back(& mat1);
     obj1.materials.push_back(& mat2);
     obj1.transform.SetScale({0.01,0.01,0.01});
+    obj1.transform.SetPos({ 15, 0, -10 });
     obj1.transform.SetRotation({XMConvertToRadians(90),0,0});
     
 
@@ -413,13 +416,13 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
     obj2.mesh = mesh01;
     obj2.materials.push_back(& pbrMat);
     obj2.transform.SetScale({0.01,0.01,0.01});
-    obj2.transform.SetPos({ -2, 0, 0 });
+    obj2.transform.SetPos({ 2, 0, 10 });
 
     GameObject helmetObj;
     helmetObj.mesh = helmetMesh;
     helmetObj.materials.push_back(& pbrMat);
-    helmetObj.transform.SetScale({0.01,0.01,0.01});
-    helmetObj.transform.SetPos({ -3, 0, 0 });
+    helmetObj.transform.SetScale({0.1,0.1,0.1});
+    helmetObj.transform.SetPos({ 0, 3, -15 });
     helmetObj.transform.SetRotation({XMConvertToRadians(90),0,0});
 
 
