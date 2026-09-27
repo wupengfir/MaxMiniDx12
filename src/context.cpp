@@ -9,47 +9,77 @@ Context::Context(bool useDebugLayer):useDebug(useDebugLayer)
 
 void Context::SetRenderTarget(ID3D12GraphicsCommandList* cmdList,TextureBuffer* rt,bool clear,DXGI_RGBA clearColor,TextureBuffer* depth,bool clearDepth,float clearDepthValue)
 {
-    ID3D12Resource* colorResource = rt->GetTexture();
-    auto colorstatus = Resource::StatusMap.find(colorResource);
-    if (colorstatus == Resource::StatusMap.end())
-    {
-        return;
-    }
-    if (colorstatus->second.status != D3D12_RESOURCE_STATE_RENDER_TARGET)
-    {
-        // 1. BackBuffer 从 PRESENT 状态过渡到 RENDER_TARGET（才能写）
-        D3D12_RESOURCE_BARRIER toRender{};
-        toRender.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        toRender.Transition.pResource = colorResource;
-        //toRender.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
-        toRender.Transition.StateBefore = colorstatus->second.status;
-        toRender.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-        toRender.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-        cmdList->ResourceBarrier(1, &toRender);
-        colorstatus->second.status = D3D12_RESOURCE_STATE_RENDER_TARGET;
-    }
+    
 	        
-
-    // 清屏
-    D3D12_CPU_DESCRIPTOR_HANDLE rtv = ((TextureBuffer*)Resource::FindResourceAndStatus(colorResource).resource)->CPUHandles[(int)ViewType::RTV];// m_Color->cpuhandle;
-    cmdList->ClearRenderTargetView(rtv, &clearColor.r, 0, nullptr);            
+    D3D12_CPU_DESCRIPTOR_HANDLE* rtv = nullptr;
+    D3D12_CPU_DESCRIPTOR_HANDLE* dsv = nullptr;
+	UINT width = 0;
+    UINT height = 0;
+    if (rt)
+    {
+        ID3D12Resource* colorResource = rt->GetTexture();
+		width = colorResource->GetDesc().Width;
+		height = colorResource->GetDesc().Height;
+        auto colorstatus = Resource::StatusMap.find(colorResource);
+        if (colorstatus == Resource::StatusMap.end())
+        {
+            return;
+        }
+        if (colorstatus->second.status != D3D12_RESOURCE_STATE_RENDER_TARGET)
+        {
+            // 1. BackBuffer 从 PRESENT 状态过渡到 RENDER_TARGET（才能写）
+            D3D12_RESOURCE_BARRIER toRender{};
+            toRender.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            toRender.Transition.pResource = colorResource;
+            //toRender.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+            toRender.Transition.StateBefore = colorstatus->second.status;
+            toRender.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+            toRender.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            cmdList->ResourceBarrier(1, &toRender);
+            colorstatus->second.status = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        }
+        rtv = &((TextureBuffer*)Resource::FindResourceAndStatus(colorResource).resource)->CPUHandles[(int)ViewType::RTV];// m_Color->cpuhandle;
+        cmdList->ClearRenderTargetView(*rtv, &clearColor.r, 0, nullptr);
+    }             
     if (depth)
     {
-        D3D12_CPU_DESCRIPTOR_HANDLE dsv = ((TextureBuffer*)Resource::FindResourceAndStatus(depth->GetTexture()).resource)->CPUHandles[(int)ViewType::DSV];// m_Depth->cpuhandle;   
-        cmdList->ClearDepthStencilView(dsv,D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-        cmdList->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
+        ID3D12Resource* depthResource = depth->GetTexture();
+        width = depthResource->GetDesc().Width;
+        height = depthResource->GetDesc().Height;
+        auto depthstatus = Resource::StatusMap.find(depthResource);
+        if (depthstatus == Resource::StatusMap.end())
+        {
+            return;
+        }
+        if (depthstatus->second.status != D3D12_RESOURCE_STATE_DEPTH_WRITE)
+        {
+            D3D12_RESOURCE_BARRIER toRender{};
+            toRender.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            toRender.Transition.pResource = depthResource;
+            toRender.Transition.StateBefore = depthstatus->second.status;
+            toRender.Transition.StateAfter = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+            toRender.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            cmdList->ResourceBarrier(1, &toRender);
+            depthstatus->second.status = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+        }
+        dsv = &((TextureBuffer*)Resource::FindResourceAndStatus(depth->GetTexture()).resource)->CPUHandles[(int)ViewType::DSV];// m_Depth->cpuhandle;   
+        cmdList->ClearDepthStencilView(*dsv,D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+    }
+    if (rtv || dsv)
+    {
+		cmdList->OMSetRenderTargets(rtv ? 1 : 0, rtv, FALSE, dsv);
     }
     else
     {
-        cmdList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+        return;
     }
     
 
     D3D12_VIEWPORT viewport{};
     viewport.TopLeftX = 0;
     viewport.TopLeftY = 0;
-    viewport.Width = colorResource->GetDesc().Width;
-    viewport.Height = colorResource->GetDesc().Height;
+    viewport.Width = width;
+    viewport.Height = height;
     viewport.MinDepth = 0.0f;
     viewport.MaxDepth = 1.0f;
     cmdList->RSSetViewports(1, &viewport);
@@ -57,8 +87,8 @@ void Context::SetRenderTarget(ID3D12GraphicsCommandList* cmdList,TextureBuffer* 
     D3D12_RECT scissor{};
     scissor.left = 0;
     scissor.top = 0;
-    scissor.right = colorResource->GetDesc().Width;
-    scissor.bottom = colorResource->GetDesc().Height;
+    scissor.right = width;
+    scissor.bottom = height;
     cmdList->RSSetScissorRects(1, &scissor);
 }
 
@@ -334,6 +364,174 @@ void Context::DrawMesh(ID3D12GraphicsCommandList* cmdList,Mesh* mesh,int submesh
     }
 }
 
+void Context::DrawShadow(ID3D12GraphicsCommandList* cmdList, Mesh* mesh, int submeshIndex, Material* mat, const XMMATRIX* matrix, XMMATRIX* matrixVP, const XMMATRIX* matrixInvs)
+{
+ 
+    ID3D12PipelineState* pso = mat->GetPso().Get();
+    if (pso)
+    {
+
+    }
+    else
+    {
+        mat->Create();
+        mat->PsoDesc().InputLayout = { mesh->GetInputDesc().data(),(UINT)mesh->GetInputDesc().size() };
+        memset(mat->PsoDesc().RTVFormats, 0, sizeof(DXGI_FORMAT) * 8);
+        DxDevice()->CreateGraphicsPipelineState(&mat->PsoDesc(), IID_PPV_ARGS(&(mat->GetPso())));
+    }
+
+    cmdList->SetGraphicsRootSignature(mat->GetRootSignature().Get());
+    cmdList->SetPipelineState(mat->GetPso().Get());
+
+    //设置材质属性
+    auto& paramList = mat->GetShader()->GetShaderResourceParams();
+    UINT slotIndex = 0;
+    for (size_t i = 0; i < paramList.size(); i++)
+    {
+        auto& param = paramList[i];
+        //判断cb
+        if (param.bufferDataDescs.size() > 0)
+        {
+            //perframe buffer
+            if (param.bindDesc.BindPoint == 0 && param.bindDesc.Space == 0)
+            {
+
+                if (param.AlignedConstantBuffer == nullptr)
+                    param.AlignedConstantBuffer = new uint8_t[param.alignedCBufferSize]{};
+                auto value = param.bufferDataDescs[0];
+                memcpy(param.AlignedConstantBuffer + value.StartOffset, matrixVP, 64);
+                auto offset = CBufferHeap()->WriteConstantBuffer(param.AlignedConstantBuffer, param.alignedCBufferSize);
+                cmdList->SetGraphicsRootConstantBufferView(slotIndex, CBufferHeap()->GetAddress() + offset);
+                slotIndex++;
+            }
+            //perdraw buffer
+            else if (param.bindDesc.BindPoint == 1 && param.bindDesc.Space == 0)
+            {
+                if (param.AlignedConstantBuffer == nullptr)
+                    param.AlignedConstantBuffer = new uint8_t[param.alignedCBufferSize]{};
+
+                auto value = param.bufferDataDescs[0];
+                memcpy(param.AlignedConstantBuffer + value.StartOffset, matrix, value.Size);
+                value = param.bufferDataDescs[1];
+                if (matrixInvs)
+                {
+                    memcpy(param.AlignedConstantBuffer + value.StartOffset, matrixInvs, value.Size);
+                }
+                else
+                {
+                    memset(param.AlignedConstantBuffer + value.StartOffset, 0, value.Size);
+                }
+
+                auto offset = CBufferHeap()->WriteConstantBuffer(param.AlignedConstantBuffer, param.alignedCBufferSize);
+                cmdList->SetGraphicsRootConstantBufferView(slotIndex, CBufferHeap()->GetAddress() + offset);
+                slotIndex++;
+            }
+            //perFrame buffer
+            else if (param.bindDesc.BindPoint == 2 && param.bindDesc.Space == 0)
+            {
+                if (param.AlignedConstantBuffer == nullptr)
+                    param.AlignedConstantBuffer = new uint8_t[param.alignedCBufferSize]{};
+
+                auto value = param.bufferDataDescs[0];
+                auto dir = XMVector3Normalize(XMVECTOR{ GlobalSetting.MainLightDirection.x,GlobalSetting.MainLightDirection.y,GlobalSetting.MainLightDirection.z,GlobalSetting.MainLightDirection.w });
+                memcpy(param.AlignedConstantBuffer + value.StartOffset, &dir, value.Size);
+                value = param.bufferDataDescs[1];
+                float deltaTime = Context::pContext->timer.DeltaTime();
+                XMVECTOR time = { deltaTime ,sin(deltaTime),Context::pContext->timer.ElapsedSeconds(),Context::pContext->FrameCount };
+                memcpy(param.AlignedConstantBuffer + value.StartOffset, &time, value.Size);
+                auto offset = CBufferHeap()->WriteConstantBuffer(param.AlignedConstantBuffer, param.alignedCBufferSize);
+                cmdList->SetGraphicsRootConstantBufferView(slotIndex, CBufferHeap()->GetAddress() + offset);
+                slotIndex++;
+            }
+
+
+            else
+            {
+                for (size_t j = 0; j < param.bufferDataDescs.size(); j++)
+                {
+                    if (param.AlignedConstantBuffer == nullptr)
+                        param.AlignedConstantBuffer = new uint8_t[param.alignedCBufferSize]{};
+                    auto value = param.bufferDataDescs[j];
+                    auto name = param.bufferDataDescNames[j];
+                    MaterialProperty* property = mat->FindProperty(name);
+                    if (property)
+                    {
+                        //printf("x is :  %f\n",*((float*)(property->data)));
+                        memcpy(param.AlignedConstantBuffer + value.StartOffset, property->data, property->size);
+                    }
+                    else
+                    {
+                        memset(param.AlignedConstantBuffer + value.StartOffset, 0, value.Size);
+                    }
+
+                }
+                auto offset = CBufferHeap()->WriteConstantBuffer(param.AlignedConstantBuffer, param.alignedCBufferSize);
+                cmdList->SetGraphicsRootConstantBufferView(slotIndex, CBufferHeap()->GetAddress() + offset);
+                slotIndex++;
+            }
+
+
+        }
+        else
+        {
+            if (param.bindDesc.Type == D3D_SIT_SAMPLER)continue;
+            if (param.bindDesc.Type == D3D_SHADER_INPUT_TYPE::D3D10_SIT_TEXTURE)
+            {
+                MaterialProperty* property = mat->FindProperty(param.name);
+                if (property)
+                {
+
+                    auto colorstatus = Resource::StatusMap.find(property->texture->GetTexture());
+                    if (colorstatus != Resource::StatusMap.end())
+                    {
+                        if (colorstatus->second.status != D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE)
+                        {
+                            D3D12_RESOURCE_BARRIER toPresent{};
+                            toPresent.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+                            toPresent.Transition.pResource = property->texture->GetTexture();
+                            toPresent.Transition.StateBefore = colorstatus->second.status;
+                            toPresent.Transition.StateAfter = D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
+                            toPresent.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+                            cmdList->ResourceBarrier(1, &toPresent);
+                            colorstatus->second.status = D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
+                        }
+                    }
+
+
+                    cmdList->SetGraphicsRootDescriptorTable(slotIndex, property->texture->GPUHandles[int(ViewType::SRV)]);
+                    slotIndex++;
+                }
+                else
+                {
+                    if (param.name.find("Normal") != std::string::npos)
+                    {
+                        cmdList->SetGraphicsRootDescriptorTable(slotIndex, TextureBuffer::GetDefaultNormalTex().GPUHandles[int(ViewType::SRV)]);
+                    }
+                    else
+                    {
+                        cmdList->SetGraphicsRootDescriptorTable(slotIndex, TextureBuffer::GetDefaultWhiteTex().GPUHandles[int(ViewType::SRV)]);
+                    }
+
+                    slotIndex++;
+                }
+
+            }
+        }
+
+    }
+
+
+    cmdList->IASetVertexBuffers(0, 1, mesh->VBV());
+    if (mesh->indices.size() > 0)
+    {
+        cmdList->IASetIndexBuffer(mesh->IBV());
+        cmdList->DrawIndexedInstanced(mesh->IndicesOffsets[submeshIndex].size, 1, mesh->IndicesOffsets[submeshIndex].start, 0, 0);
+    }
+    else
+    {
+        cmdList->DrawInstanced(mesh->vertices.size(), 1, 0, 0);
+    }
+}
 
 void Context::Dispatch(ID3D12GraphicsCommandList* cmdList,Material* mat,UINT x,UINT y,UINT z )
 {

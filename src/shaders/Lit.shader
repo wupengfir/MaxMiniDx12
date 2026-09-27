@@ -15,8 +15,8 @@ Texture2D _NormalMap;
 Texture2D _MetallicMap;
 Texture2D _RoughnessMap;
 Texture2D _BrdfMap;
-TextureCube _IrradianceMap;
 
+TextureCube _IrradianceMap;
 TextureCube _ReflectionMap;
 
 TextureCube _GeneratedIrradiancemap;

@@ -37,6 +37,8 @@ public:
 		return (value + align - 1) & ~(align - 1);
 	}
 };
+
+
 class Resource;
 struct ResourceAndStatus
 {
@@ -63,6 +65,7 @@ public :
         }
 		return status->second;
 	}
+	D3D12_RESOURCE_STATES status;
 	Resource(){}
 	ID3D12Device* GetDevice() const;// { return m_device->DxDevice(); }
 	Resource(const Resource&) = delete;

@@ -136,6 +136,7 @@ public :
 	CommandBufferPool* GetCommandBufferPool(){ return m_commandBufferPool; }
 	bool Init(HWND hwnd, uint32_t width, uint32_t height);
 	void DrawMesh(ID3D12GraphicsCommandList* cmdList,Mesh* mesh,int submeshIndex,Material* mat,const XMMATRIX* matrix ,Camera* camera,DXGI_FORMAT formats[] ,const XMMATRIX* matrixInv = nullptr);
+	void DrawShadow(ID3D12GraphicsCommandList* cmdList, Mesh* mesh, int submeshIndex, Material* mat, const XMMATRIX* matrix, XMMATRIX* matrixVP, const XMMATRIX* matrixInvs = nullptr);
 	void Dispatch(ID3D12GraphicsCommandList* cmdList, Material* mat, UINT x, UINT y, UINT z);
 	void ShutDown();
 	

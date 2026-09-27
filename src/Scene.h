@@ -57,8 +57,8 @@ public:
 		m_sceneObjsMap[m_sceneObjs[index]->uuid] = index;
 	}
 
-	void DrawScene(ID3D12GraphicsCommandList* cmdList,UINT cameraIndex,DXGI_FORMAT formats[]);
-
+	void DrawScene(ID3D12GraphicsCommandList* cmdList,DXGI_FORMAT formats[],Camera* camera = nullptr);
+	void DrawSceneShadow(ID3D12GraphicsCommandList* cmdList,XMMATRIX* matrixvp);
 	Scene()
 	{
 		if (CurrentScene)

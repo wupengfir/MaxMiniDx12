@@ -3,6 +3,7 @@
 #include "Scene.h"
 #include "context.h"
 #include "TestResource.h"
+#include "Camera.h"
 #include <iostream>
 void RenderPass::SetRenderTaget(TextureBuffer* rt, TextureBuffer* depth)
 {
@@ -26,69 +27,13 @@ void OpaquePass::ExecutePass(ID3D12CommandQueue* queue)
             formats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 
             ColorAttachment = m_Color->GetTexture();
-            Context::SetRenderTarget(cmdList, m_Color, true, { 0,0,0,0 }, m_Depth);
-            //auto colorstatus = Resource::StatusMap.find(m_Color);
-            //if (colorstatus == Resource::StatusMap.end())
-            //{
-            //    return;
-            //}
-            //if (colorstatus->second.status != D3D12_RESOURCE_STATE_RENDER_TARGET)
-            //{
-            //    // 1. BackBuffer 从 PRESENT 状态过渡到 RENDER_TARGET（才能写）
-            //    D3D12_RESOURCE_BARRIER toRender{};
-            //    toRender.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-            //    toRender.Transition.pResource = m_Color;
-            //    //toRender.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
-            //    toRender.Transition.StateBefore = colorstatus->second.status;
-            //    toRender.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-            //    toRender.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-            //    cmdList->ResourceBarrier(1, &toRender);
-            //    colorstatus->second.status = D3D12_RESOURCE_STATE_RENDER_TARGET;
-            //}
-	        
-
-            //// 清屏
-            //D3D12_CPU_DESCRIPTOR_HANDLE rtv = ((TextureBuffer*)Resource::FindResourceAndStatus(m_Color).resource)->CPUHandles[(int)ViewType::RTV];// m_Color->cpuhandle;
-            //D3D12_CPU_DESCRIPTOR_HANDLE dsv = ((TextureBuffer*)Resource::FindResourceAndStatus(m_Depth).resource)->CPUHandles[(int)ViewType::DSV];// m_Depth->cpuhandle;
-            //float clearColor[] = { 0,0,0,0 };
-            //cmdList->ClearRenderTargetView(rtv, clearColor, 0, nullptr);            
-            //cmdList->ClearDepthStencilView(dsv,D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-            //cmdList->OMSetRenderTargets(1, &rtv, FALSE, &dsv);
-
-            //D3D12_VIEWPORT viewport{};
-            //viewport.TopLeftX = 0;
-            //viewport.TopLeftY = 0;
-            //viewport.Width = m_ColorDescs[0].Width;
-            //viewport.Height = m_ColorDescs[0].Height;
-            //viewport.MinDepth = 0.0f;
-            //viewport.MaxDepth = 1.0f;
-            //cmdList->RSSetViewports(1, &viewport);
-
-            //D3D12_RECT scissor{};
-            //scissor.left = 0;
-            //scissor.top = 0;
-            //scissor.right = m_ColorDescs[0].Width;
-            //scissor.bottom = m_ColorDescs[0].Height;
-            //cmdList->RSSetScissorRects(1, &scissor);
-
-
+            Context::SetRenderTarget(cmdList, m_Color, true, { 0,0,0,0 }, m_Depth);          
             cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 
             //drawscene
-            Scene::CurrentScene->DrawScene(cmdList,cameraIndex,formats);
+            Scene::CurrentScene->DrawScene(cmdList,formats);
             //
-
-
-            // // 3. 过渡回 PRESENT 状态（才能 Present 到屏幕）
-            //D3D12_RESOURCE_BARRIER toPresent{};
-            //toPresent.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-            //toPresent.Transition.pResource = m_Color->resource;
-            //toPresent.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-            //toPresent.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-            //toPresent.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-            //cmdList->ResourceBarrier(1, &toPresent);
-
 
             cmdList->Close();
             ID3D12CommandList* lists[] = {cmdList };
@@ -176,7 +121,7 @@ void PostProcessPass::ExecutePass(ID3D12CommandQueue* queue)
     queue->ExecuteCommandLists(1, lists);
 
 }
-
+//后面拿来生成cubemap的球谐
 void EnvironmetConvolovePass::ExecutePass(ID3D12CommandQueue* queue)
 {
     if (!m_convoloveMaterial)
@@ -219,11 +164,6 @@ void EnvironmetConvolovePass::ExecutePass(ID3D12CommandQueue* queue)
     ID3D12CommandList* lists[] = {cmdList };
     queue->ExecuteCommandLists(1, lists);
 }
-
-
-
-
-
 
 void ReadBackPass::ExecutePass(ID3D12CommandQueue* queue)
 {
@@ -443,5 +383,97 @@ void CubemapConvolovePass::ExecutePass(ID3D12CommandQueue* queue)
     Material::SetGlobalTexture("_GeneratedReflectionmap", m_reflectIrradiance);
     cmdList->Close();
     ID3D12CommandList* lists[] = {cmdList };
+    queue->ExecuteCommandLists(1, lists);
+}
+
+
+
+ShadowPass::ShadowPass()
+{
+	m_shadowMap = std::make_unique<DepthTextureBuffer>();
+	m_shadowMap->Width = 2048;
+	m_shadowMap->Height = 2048;
+    m_shadowMap->CreateTexture();
+}
+
+void ShadowPass::ComputeDirectionalShadowCameraMatrix(Camera* cam)
+{
+
+	float distance = XMMin(cam->GetFar(),shadowDistance)/ cam->GetFar();
+	XMMATRIX& invVP = cam->InvVPMatrix();
+    XMVECTOR p0 = XMVECTOR{ 0, 0, cam->GetNear(),1 };
+    XMVECTOR p1 = XMVECTOR{ -1, -1, 1, 1 };
+    XMVECTOR p2 = XMVECTOR{ -1, 1, 1, 1 };
+    XMVECTOR p3 = XMVECTOR{ 1, 1, 1, 1 };
+    XMVECTOR p4 = XMVECTOR{ 1, -1, 1, 1 };
+    p0 = XMVector4Transform(p0, invVP); 
+    p0 = XMVectorDivide(p0, XMVectorSplatW(p0));
+    p1 = XMVector4Transform(p1, invVP); 
+    p1 = XMVectorDivide(p1, XMVectorSplatW(p1)); 
+    p1 = XMVectorLerp(p0, p1, distance);
+    p2 = XMVector4Transform(p2, invVP); 
+    p2 = XMVectorDivide(p2, XMVectorSplatW(p2)); 
+    p2 = XMVectorLerp(p0, p2, distance);
+    p3 = XMVector4Transform(p3, invVP); 
+    p3 = XMVectorDivide(p3, XMVectorSplatW(p3)); 
+    p3 = XMVectorLerp(p0, p3, distance);
+    p4 = XMVector4Transform(p4, invVP); 
+    p4 = XMVectorDivide(p4, XMVectorSplatW(p4)); 
+    p4 = XMVectorLerp(p0, p4, distance);
+
+
+    XMVECTOR sceneCenter = XMVectorZero();
+    sceneCenter += p0*4;
+    sceneCenter += p1;
+    sceneCenter += p2;
+    sceneCenter += p3;
+    sceneCenter += p4;
+    sceneCenter /= 8.0f;
+
+    // 光源位置：从sceneCenter，沿着光线方向往外拉一段
+    XMVECTOR lightPos = sceneCenter + XMLoadFloat4(&Context::pContext->GlobalSetting.MainLightDirection) * 1000.0f;
+
+    // 构建 shadowView：光源看向 sceneCenter
+    XMVECTOR up = XMVectorSet(0, 0, 1, 0);
+    // 防止 up 和 lightDir 共线，可加一个鲁棒判断
+    m_shadowView = XMMatrixLookAtLH(lightPos, sceneCenter, up);
+
+    // ==========3. 把8个世界点变换到光源视图空间 ==========
+    p0 = XMVector4Transform(p0, m_shadowView);
+    p1 = XMVector4Transform(p0, m_shadowView);
+    p2 = XMVector4Transform(p0, m_shadowView);
+    p3 = XMVector4Transform(p0, m_shadowView);
+    p4 = XMVector4Transform(p0, m_shadowView);
+
+    XMVECTOR minp, maxp;
+    minp = XMVectorMin(p0, p1); minp = XMVectorMin(minp, p2); minp = XMVectorMin(minp, p3); minp = XMVectorMin(minp, p4);
+    maxp = XMVectorMax(p0, p1); minp = XMVectorMax(minp, p2); minp = XMVectorMax(minp, p3); minp = XMVectorMax(minp, p4);
+    m_shadowProj = XMMatrixOrthographicOffCenterLH(
+        minp.m128_f32[0], maxp.m128_f32[0],
+        minp.m128_f32[1], maxp.m128_f32[1],
+        minp.m128_f32[2], maxp.m128_f32[2]
+    );
+	m_shadowVP = m_shadowView * m_shadowProj;
+}
+
+void ShadowPass::ExecutePass(ID3D12CommandQueue* queue)
+{
+    CommandBuffer cmdbuffer = Context::pContext->GetCommandBufferPool()->AcquireCommandList(0, Context::pContext->FrameIndex(), CommandBufferPool::Type::DIRECT);
+    ID3D12GraphicsCommandList* cmdList = cmdbuffer.CmdList.Get();
+    //设置描述符堆，每个cmdlist都要设
+    ID3D12DescriptorHeap* ppHeaps[] = { Context::pContext->SrvHeap()->Heap() };
+    cmdList->SetDescriptorHeaps(1, ppHeaps);
+
+
+    Context::SetRenderTarget(cmdList, nullptr, false, { 0,0,0,0 }, m_shadowMap.get());
+    cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+
+    //drawscene
+    Scene::CurrentScene->DrawSceneShadow(cmdList, &m_shadowVP);
+    //
+
+    cmdList->Close();
+    ID3D12CommandList* lists[] = { cmdList };
     queue->ExecuteCommandLists(1, lists);
 }

@@ -20,7 +20,7 @@ target_include_directories(MinimalDX12 PRIVATE
 target_link_libraries(MinimalDX12 PRIVATE Microsoft::DirectXTex)
 target_link_libraries(MinimalDX12 PRIVATE assimp::assimp)
 target_link_libraries(MinimalDX12 PRIVATE  
-    imgui::imgui
+    imgui::imgui 
      
 )
 target_link_libraries(MinimalDX12 PRIVATE  

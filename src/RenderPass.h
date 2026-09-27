@@ -2,11 +2,15 @@
 #include <d3d12.h>
 #include <vector>
 #include <functional>
+#include <memory>
+#include "Common.h"
 class DescPtr;
 class Material;
 class StructureBuffer;
 class TextureBuffer;
 class CubemapRenderTextureBuffer;
+class DepthTextureBuffer;
+class Camera;
 class RenderPass
 {
 protected:
@@ -98,4 +102,21 @@ public:
 	void ExecutePass(ID3D12CommandQueue* queue) override ;
 	inline static std::vector<ReadBackFunction> asyncCallbacks{};
 	inline static std::vector<ReadBackFunction> syncCallbacks{};
+};
+
+class ShadowPass : public RenderPass
+{
+private:
+	Material* m_shadowMaterial;
+	std::unique_ptr<DepthTextureBuffer> m_shadowMap;
+	XMMATRIX m_shadowView;
+	XMMATRIX m_shadowProj;
+	XMMATRIX m_shadowVP;
+public:
+	float shadowDistance = 100.0f;
+	void SetShadowMaterial(Material* mat) { m_shadowMaterial = mat; }
+	void ComputeDirectionalShadowCameraMatrix(Camera* camera);
+	void ExecutePass(ID3D12CommandQueue* queue) override;
+	ShadowPass();
+	~ShadowPass() = default;
 };

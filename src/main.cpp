@@ -328,6 +328,8 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
     cubeMapConvoloveShader.LoadShader();
     Shader cubeMapReflectionConvoloveShader("shaders/CubeMapReflectionConvolove.shader");
     cubeMapReflectionConvoloveShader.LoadShader();
+	Shader shadowShader("shaders/Shadow.shader");
+	shadowShader.LoadShader();
     //创建材质
 
     Material mat;
@@ -338,6 +340,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
     Material computeMat;
     Material cubeMapConvoloveMaterial;
     Material cubeMapReflectionConvoloveMaterial;
+	Material shadowMaterial;
 
     mat.SetShader(&shader);
     mat1.SetShader(&litShader);
@@ -347,6 +350,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
     computeMat.SetComputeShader(&sampleCS);
     cubeMapConvoloveMaterial.SetShader(&cubeMapConvoloveShader);
     cubeMapReflectionConvoloveMaterial.SetShader(&cubeMapReflectionConvoloveShader);
+	shadowMaterial.SetShader(&shadowShader);
 
     postprocessMat.DepthEnable = false;
     mat2.SetValue<XMFLOAT4>(MaterialPropertyType::FLOAT4,"myFloat4", XMFLOAT4{0.5,0.2,0,0});
@@ -431,11 +435,12 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
     EnvironmetConvolovePass convolovePass;
     ReadBackPass readBakcPass;
     CubemapConvolovePass cubemapConvolovePass;
+	ShadowPass shadowPass;
     postPass.SetPostMaterial(&postprocessMat);
     convolovePass.SetConvoloveMaterial(&computeMat);
     cubemapConvolovePass.SetConvoloveMaterial(&cubeMapConvoloveMaterial);
     cubemapConvolovePass.SetReflectConvoloveMaterial(&cubeMapReflectionConvoloveMaterial);
-
+	shadowPass.SetShadowMaterial(&shadowMaterial);
     MSG msg{};
     auto previousFrameTime = std::chrono::steady_clock::now();
     while (msg.message != WM_QUIT) {
@@ -472,6 +477,8 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
             //DescPtr* depthDesc = &logicalDevice.DsvHeap()->DescResourceMap()[depthbuffer.GetTexture()];
             //DescPtr* colorDesc = &logicalDevice.RtvHeap()->DescResourceMap()[colorbuffer.GetTexture()];
             readBakcPass.ExecutePass(currentContext.QueueDirect());
+            shadowPass.ComputeDirectionalShadowCameraMatrix(g_gameCamera);
+            shadowPass.ExecutePass(currentContext.QueueDirect());
             opaquePass.SetRenderTaget(&currentContext.colorbuffer,&currentContext.depthbuffer);
             opaquePass.ExecutePass(currentContext.QueueDirect());
             postPass.SetRenderTaget(nullptr,&currentContext.depthbuffer);
