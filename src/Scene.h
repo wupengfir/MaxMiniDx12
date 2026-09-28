@@ -58,7 +58,7 @@ public:
 	}
 
 	void DrawScene(ID3D12GraphicsCommandList* cmdList,DXGI_FORMAT formats[],Camera* camera = nullptr);
-	void DrawSceneShadow(ID3D12GraphicsCommandList* cmdList,XMMATRIX* matrixvp);
+	void DrawSceneShadow(ID3D12GraphicsCommandList* cmdList,XMMATRIX* matrixvp,Material* shadowMaterial);
 	Scene()
 	{
 		if (CurrentScene)

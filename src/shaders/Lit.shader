@@ -73,7 +73,10 @@ float4 PS(PSInput input) : SV_TARGET
     float3 reflectDir = reflect(-viewDir, normalWS);
     giInput.reflecIrradiance = _GeneratedReflectionmap.SampleLevel(sampler_linear_clamp, reflectDir.xzy, roughness * MAX_REFLECTION_LOD).xyz;
     giInput.iblBrdf = _BrdfMap.Sample(sampler_linear_clamp,float2(saturate(dot(normalWS, viewDir)), roughness)).rg;
-    float3 color = UE_PBR_BRDF(albedo,metallic,roughness*roughness,normalWS,viewDir,_MainLightDirection,_MainLightColor.xyz,giInput);
+
+    float shadow = SampleShadow(input.wPos);
+
+    float3 color = UE_PBR_BRDF(albedo,metallic,roughness*roughness,normalWS,viewDir,_MainLightDirection,_MainLightColor.xyz*shadow,giInput);
 
     
 

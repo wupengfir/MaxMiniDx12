@@ -22,6 +22,7 @@ struct RenderSetting
 	float Exposure = 0;
 	XMFLOAT4 MainLightDirection{0,1,1,0};
 	XMFLOAT4 MainLightColor{0,0,0,0};
+	XMFLOAT4 ShadowBias{0.1f,0,0,0};
 };
 
 	template<typename T>
@@ -83,5 +84,7 @@ inline std::vector<std::wstring> Split(const std::wstring& str, wchar_t delimite
     }
     return tokens;
 }
+
+void SetResourceBarrier(ID3D12Resource* resource, D3D12_RESOURCE_STATES status,ID3D12GraphicsCommandList* cmdlist);
 
 std::optional<std::pair<bool, D3D12_RESOURCE_STATES>> GetResourceStatus(ID3D12Resource* resource, D3D12_RESOURCE_STATES status);

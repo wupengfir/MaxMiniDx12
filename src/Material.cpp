@@ -81,11 +81,26 @@ bool Material::Create()
 			D3D12_STATIC_SAMPLER_DESC sampler{};
 			sampler.ShaderRegister = paramDatas[i].bindDesc.BindPoint;
 			sampler.RegisterSpace = paramDatas[i].bindDesc.Space;
-			sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-			sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-			sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-			sampler.MaxLOD = 1024;
-			sampler.Filter = name.find("POINT") != std::string::npos ? D3D12_FILTER_MIN_MAG_MIP_POINT:D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+			if (paramDatas[i].bindDesc.uFlags == _D3D_SHADER_INPUT_FLAGS::D3D_SIF_COMPARISON_SAMPLER)
+			{
+				sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+				sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+				sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+				sampler.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE;
+				sampler.ComparisonFunc = D3D12_COMPARISON_FUNC_LESS;
+				sampler.Filter = D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT;
+			}
+			else
+			{
+				sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+				sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+				sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+				sampler.MaxLOD = 1024;
+				sampler.Filter = name.find("POINT") != std::string::npos ? D3D12_FILTER_MIN_MAG_MIP_POINT:D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+			}
+
+
+			
 			samplerList.push_back(sampler);
 			break;
 		}

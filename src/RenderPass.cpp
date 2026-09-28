@@ -394,66 +394,90 @@ ShadowPass::ShadowPass()
 	m_shadowMap->Width = 2048;
 	m_shadowMap->Height = 2048;
     m_shadowMap->CreateTexture();
+    Material::SetGlobalTexture("_ShadowMap", m_shadowMap.get());
 }
 
 void ShadowPass::ComputeDirectionalShadowCameraMatrix(Camera* cam)
 {
+    const float cameraNear = cam->GetNear();
+    const float cameraFar = cam->GetFar();
+    const float shadowFar = shadowDistance < cameraFar ? shadowDistance : cameraFar;
+    const float cameraDepth = cameraFar - cameraNear;
+    const float sliceRatio = cameraDepth > 0.0001f
+        ? XMMin(XMMax((shadowFar - cameraNear) / cameraDepth, 0.0f), 1.0f)
+        : 1.0f;
 
-	float distance = XMMin(cam->GetFar(),shadowDistance)/ cam->GetFar();
-	XMMATRIX& invVP = cam->InvVPMatrix();
-    XMVECTOR p0 = XMVECTOR{ 0, 0, cam->GetNear(),1 };
-    XMVECTOR p1 = XMVECTOR{ -1, -1, 1, 1 };
-    XMVECTOR p2 = XMVECTOR{ -1, 1, 1, 1 };
-    XMVECTOR p3 = XMVECTOR{ 1, 1, 1, 1 };
-    XMVECTOR p4 = XMVECTOR{ 1, -1, 1, 1 };
-    p0 = XMVector4Transform(p0, invVP); 
-    p0 = XMVectorDivide(p0, XMVectorSplatW(p0));
-    p1 = XMVector4Transform(p1, invVP); 
-    p1 = XMVectorDivide(p1, XMVectorSplatW(p1)); 
-    p1 = XMVectorLerp(p0, p1, distance);
-    p2 = XMVector4Transform(p2, invVP); 
-    p2 = XMVectorDivide(p2, XMVectorSplatW(p2)); 
-    p2 = XMVectorLerp(p0, p2, distance);
-    p3 = XMVector4Transform(p3, invVP); 
-    p3 = XMVectorDivide(p3, XMVectorSplatW(p3)); 
-    p3 = XMVectorLerp(p0, p3, distance);
-    p4 = XMVector4Transform(p4, invVP); 
-    p4 = XMVectorDivide(p4, XMVectorSplatW(p4)); 
-    p4 = XMVectorLerp(p0, p4, distance);
+    const XMMATRIX& invVP = cam->InvVPMatrix();
+    const float cornerX[4] = { -1.0f, -1.0f, 1.0f, 1.0f };
+    const float cornerY[4] = { -1.0f, 1.0f, 1.0f, -1.0f };
+    XMVECTOR frustumCorners[8];
 
+    for (int i = 0; i < 4; ++i)
+    {
+        XMVECTOR nearCorner = XMVector4Transform(
+            XMVectorSet(cornerX[i], cornerY[i], 0.0f, 1.0f), invVP);
+        nearCorner = XMVectorDivide(nearCorner, XMVectorSplatW(nearCorner));
+
+        XMVECTOR farCorner = XMVector4Transform(
+            XMVectorSet(cornerX[i], cornerY[i], 1.0f, 1.0f), invVP);
+        farCorner = XMVectorDivide(farCorner, XMVectorSplatW(farCorner));
+
+        frustumCorners[i] = nearCorner;
+        frustumCorners[i + 4] = XMVectorLerp(nearCorner, farCorner, sliceRatio);
+    }
 
     XMVECTOR sceneCenter = XMVectorZero();
-    sceneCenter += p0*4;
-    sceneCenter += p1;
-    sceneCenter += p2;
-    sceneCenter += p3;
-    sceneCenter += p4;
-    sceneCenter /= 8.0f;
+    for (const XMVECTOR& corner : frustumCorners)
+    {
+        sceneCenter = XMVectorAdd(sceneCenter, corner);
+    }
+    sceneCenter = XMVectorScale(sceneCenter, 1.0f / 8.0f);
 
-    // 光源位置：从sceneCenter，沿着光线方向往外拉一段
-    XMVECTOR lightPos = sceneCenter + XMLoadFloat4(&Context::pContext->GlobalSetting.MainLightDirection) * 1000.0f;
+    XMVECTOR lightDir = XMLoadFloat4(&Context::pContext->GlobalSetting.MainLightDirection);
+    lightDir = XMVectorSetW(lightDir, 0.0f);
+    if (XMVectorGetX(XMVector3LengthSq(lightDir)) < 0.000001f)
+    {
+        lightDir = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+    }
+    lightDir = XMVector3Normalize(lightDir);
 
-    // 构建 shadowView：光源看向 sceneCenter
-    XMVECTOR up = XMVectorSet(0, 0, 1, 0);
-    // 防止 up 和 lightDir 共线，可加一个鲁棒判断
+    float frustumRadius = 0.0f;
+    for (const XMVECTOR& corner : frustumCorners)
+    {
+        frustumRadius = XMMax(
+            frustumRadius,
+            XMVectorGetX(XMVector3Length(XMVectorSubtract(corner, sceneCenter))));
+    }
+
+    const float depthPadding = XMMax(10.0f, shadowFar * 0.1f);
+    const XMVECTOR lightPos = XMVectorAdd(
+        sceneCenter, XMVectorScale(lightDir, frustumRadius + depthPadding));
+
+    const XMVECTOR worldUp = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
+    const float upAlignment = XMVectorGetX(XMVector3Dot(lightDir, worldUp));
+    const XMVECTOR up = fabsf(upAlignment) > 0.99f
+        ? XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f)
+        : worldUp;
     m_shadowView = XMMatrixLookAtLH(lightPos, sceneCenter, up);
 
-    // ==========3. 把8个世界点变换到光源视图空间 ==========
-    p0 = XMVector4Transform(p0, m_shadowView);
-    p1 = XMVector4Transform(p0, m_shadowView);
-    p2 = XMVector4Transform(p0, m_shadowView);
-    p3 = XMVector4Transform(p0, m_shadowView);
-    p4 = XMVector4Transform(p0, m_shadowView);
+    XMVECTOR minPoint = XMVector4Transform(frustumCorners[0], m_shadowView);
+    XMVECTOR maxPoint = minPoint;
+    for (int i = 1; i < 8; ++i)
+    {
+        const XMVECTOR lightSpaceCorner = XMVector4Transform(frustumCorners[i], m_shadowView);
+        minPoint = XMVectorMin(minPoint, lightSpaceCorner);
+        maxPoint = XMVectorMax(maxPoint, lightSpaceCorner);
+    }
 
-    XMVECTOR minp, maxp;
-    minp = XMVectorMin(p0, p1); minp = XMVectorMin(minp, p2); minp = XMVectorMin(minp, p3); minp = XMVectorMin(minp, p4);
-    maxp = XMVectorMax(p0, p1); minp = XMVectorMax(minp, p2); minp = XMVectorMax(minp, p3); minp = XMVectorMax(minp, p4);
+    const float nearZ = XMMax(0.01f, XMVectorGetZ(minPoint) - depthPadding);
+    const float farZ = XMVectorGetZ(maxPoint) + depthPadding;
     m_shadowProj = XMMatrixOrthographicOffCenterLH(
-        minp.m128_f32[0], maxp.m128_f32[0],
-        minp.m128_f32[1], maxp.m128_f32[1],
-        minp.m128_f32[2], maxp.m128_f32[2]
-    );
-	m_shadowVP = m_shadowView * m_shadowProj;
+        XMVectorGetX(minPoint), XMVectorGetX(maxPoint),
+        XMVectorGetY(minPoint), XMVectorGetY(maxPoint),
+        nearZ, farZ);
+    m_shadowVP = m_shadowView * m_shadowProj;
+    Material::SetGlobalValue(MaterialPropertyType::FLOAT4x4, "_ShadowMatrix_VP", m_shadowVP);
+    m_shadowMaterial->SetValue(MaterialPropertyType::FLOAT4, "_ShadowBias", Context::GlobalSetting.ShadowBias);
 }
 
 void ShadowPass::ExecutePass(ID3D12CommandQueue* queue)
@@ -470,8 +494,9 @@ void ShadowPass::ExecutePass(ID3D12CommandQueue* queue)
 
 
     //drawscene
-    Scene::CurrentScene->DrawSceneShadow(cmdList, &m_shadowVP);
+    Scene::CurrentScene->DrawSceneShadow(cmdList, &m_shadowVP,m_shadowMaterial);
     //
+    SetResourceBarrier(m_shadowMap->GetTexture(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, cmdList);
 
     cmdList->Close();
     ID3D12CommandList* lists[] = { cmdList };

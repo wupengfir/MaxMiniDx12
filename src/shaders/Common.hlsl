@@ -14,13 +14,26 @@ cbuffer PerDraw : register(b1)
 	row_major  float4x4 _Matrix_M_I;
 }
 cbuffer PerFrame : register(b2)
-{
+{ 
 	float4 _MainLightDirection;
 	float4 _MainLightColor;
     float4 _Time; // x = time, y = sin(time), z = cos(time), w = deltaTime
+    row_major float4x4 _ShadowMatrix_VP;
 }
 #endif
 
+Texture2D _ShadowMap;
+SamplerComparisonState sampler_ShadowMap;
+
+float SampleShadow(float3 worldPos)
+{
+    float4 shadowCoord = mul(float4(worldPos,1.0), _ShadowMatrix_VP);
+    shadowCoord.xyz /= shadowCoord.w; // 透视除法，得到NDC [-1,1]
+    shadowCoord.xy = shadowCoord.xy * 0.5f + 0.5f;
+    shadowCoord.y = 1 - shadowCoord.y;
+    float shadow = _ShadowMap.SampleCmpLevelZero(sampler_ShadowMap, shadowCoord.xy, shadowCoord.z);
+    return shadow;
+}
 
 // ACES Filmic 拟合 Tonemap (Hill‑Hejl)
 // input: linear HDR rgb (>=0，线性空间，ACES‑CG范围)

@@ -270,6 +270,12 @@ void Context::DrawMesh(ID3D12GraphicsCommandList* cmdList,Mesh* mesh,int submesh
 				float deltaTime = Context::pContext->timer.DeltaTime(); 
                 XMVECTOR time = { deltaTime ,sin(deltaTime),Context::pContext->timer.ElapsedSeconds(),Context::pContext->FrameCount};
                 memcpy(param.AlignedConstantBuffer + value.StartOffset, &time, value.Size);
+                value = param.bufferDataDescs[3];
+                MaterialProperty* property = Material::FindGlobalProperty("_ShadowMatrix_VP");
+                if(property)
+                    memcpy(param.AlignedConstantBuffer+value.StartOffset,property->data,value.Size);
+                else
+                    memset(param.AlignedConstantBuffer+value.StartOffset,0,value.Size);
                 auto offset = CBufferHeap()->WriteConstantBuffer(param.AlignedConstantBuffer,param.alignedCBufferSize);
                 cmdList->SetGraphicsRootConstantBufferView(slotIndex,CBufferHeap()->GetAddress() + offset);
                 slotIndex++;
@@ -376,6 +382,8 @@ void Context::DrawShadow(ID3D12GraphicsCommandList* cmdList, Mesh* mesh, int sub
     {
         mat->Create();
         mat->PsoDesc().InputLayout = { mesh->GetInputDesc().data(),(UINT)mesh->GetInputDesc().size() };
+        mat->PsoDesc().NumRenderTargets = 0;
+        mat->PsoDesc().PS = {};
         memset(mat->PsoDesc().RTVFormats, 0, sizeof(DXGI_FORMAT) * 8);
         DxDevice()->CreateGraphicsPipelineState(&mat->PsoDesc(), IID_PPV_ARGS(&(mat->GetPso())));
     }

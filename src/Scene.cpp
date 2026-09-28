@@ -27,7 +27,7 @@ void Scene::DrawScene(ID3D12GraphicsCommandList* cmdList,DXGI_FORMAT formats[],C
 	}
 }
 
-void Scene::DrawSceneShadow(ID3D12GraphicsCommandList* cmdList, XMMATRIX* matrixvp)
+void Scene::DrawSceneShadow(ID3D12GraphicsCommandList* cmdList, XMMATRIX* matrixvp,Material* shadowMaterial)
 {
 
 	for (GameObject* obj : m_sceneObjs)
@@ -35,9 +35,9 @@ void Scene::DrawSceneShadow(ID3D12GraphicsCommandList* cmdList, XMMATRIX* matrix
 		if (obj->mesh)
 		{
 			int index = 0;
-			while (index < obj->materials.size() && obj->materials[index])
+			while (index < obj->materials.size())
 			{
-				Context::pContext->DrawShadow(cmdList, obj->mesh, index, obj->materials[index], &(obj->transform.WorldMatrix()), matrixvp, &(obj->transform.WorldMatrixInv()));
+				Context::pContext->DrawShadow(cmdList, obj->mesh, index, shadowMaterial, &(obj->transform.WorldMatrix()), matrixvp, &(obj->transform.WorldMatrixInv()));
 				index++;
 			}
 		}

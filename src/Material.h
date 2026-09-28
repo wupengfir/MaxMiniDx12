@@ -4,6 +4,7 @@
 #include <fstream>
 #include <sstream>
 #include <unordered_set>
+
 static void ShowError(const char* msg) {
     OutputDebugStringA(msg);
     MessageBoxA(nullptr, msg, "Shader Error", MB_ICONERROR);
@@ -444,6 +445,16 @@ public:
         return nullptr;
     }
 
+    inline static MaterialProperty* FindGlobalProperty(const std::string& name)
+    {
+        auto it = m_GlobalProperties.find(name);
+        if (it != m_GlobalProperties.end())
+        {
+            return &(it->second);
+        }
+        return nullptr;
+    }
+
     void SetFloat(const std::string name, float data)
     {
         MaterialProperty property{};
@@ -504,7 +515,7 @@ public:
         MaterialProperty property{};
         property.type = type;
         property.size = sizeof(T);
-        property.offset = m_buffer.size();
+        //property.offset = m_buffer.size();
         if (property.data)
             delete[] property.data;
         property.data = new uint8_t[property.size];

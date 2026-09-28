@@ -102,6 +102,7 @@ void ImGuiLayer::DrawExampleWindow(float deltaTime)
     ImGui::DragFloat3("Light Color",&(Context::GlobalSetting.MainLightColor.x));
     ImGui::DragFloat3("Light Dir",&(Context::GlobalSetting.MainLightDirection.x));
     ImGui::SliderFloat("Exposure", &(Context::GlobalSetting.Exposure), 0.1, 2);
+    ImGui::DragFloat4("ShadowBias",&(Context::GlobalSetting.ShadowBias.x));
     ImGui::End();
 
     /*if (m_showDemoWindow)
