@@ -28,8 +28,8 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(
 
 
 static HWND          g_hwnd = nullptr;
-static const uint32_t kWidth  = 1280;
-static const uint32_t kHeight = 720;
+static const uint32_t kWidth  = 1980;
+static const uint32_t kHeight = 1080;
 // FPS 计数
 static uint64_t g_frameCount = 0;
 static Camera* g_gameCamera = nullptr;
@@ -420,8 +420,8 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
     GameObject obj2;
     obj2.mesh = mesh01;
     obj2.materials.push_back(& pbrMat);
-    obj2.transform.SetScale({0.01,0.01,0.01});
-    obj2.transform.SetPos({ 2, 0, 10 });
+    obj2.transform.SetScale({1,1,0.01});
+    obj2.transform.SetPos({ 0, 3, -1 });
 
     GameObject helmetObj;
     helmetObj.mesh = helmetMesh;
