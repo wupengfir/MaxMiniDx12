@@ -14,7 +14,7 @@
 #include <optional>
 using namespace DirectX;
 using Microsoft::WRL::ComPtr;
-
+class Material;
 struct RenderSetting
 {
 	float PrevRenderScale = 1;
@@ -23,7 +23,9 @@ struct RenderSetting
 	XMFLOAT4 MainLightDirection{0,1,1,0};
 	XMFLOAT4 MainLightColor{0,0,0,0};
 	XMFLOAT4 ShadowBias{0.1f,0,0,0};
+	XMFLOAT4 BloomParams{ 0.5f,0.5f,0.5f,0.5f };
 };
+
 
 	template<typename T>
 	void SwapValue(T& a,T& b)

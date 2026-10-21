@@ -4,6 +4,21 @@
 #include "Common.h"
 
 
+std::unique_ptr<Material> Material::BlitMaterial;
+std::unique_ptr<Shader> Material::BlitShader;
+Material* Material::GetBlitMaterial()
+{
+	if(BlitMaterial)
+		return BlitMaterial.get();
+	BlitShader = std::make_unique<Shader>("shaders/Blit.shader");
+	BlitShader->LoadShader();
+	BlitMaterial = std::make_unique<Material>();
+	BlitMaterial->SetShader(BlitShader.get());
+	BlitMaterial->DepthEnable = false;
+	BlitMaterial->CullMode = D3D12_CULL_MODE_NONE;
+	BlitMaterial->DepthTest = D3D12_COMPARISON_FUNC_ALWAYS;
+	return BlitMaterial.get();
+}
 
 bool Material::Create()
 {
@@ -92,10 +107,14 @@ bool Material::Create()
 			}
 			else
 			{
-				sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-				sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-				sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-				sampler.MaxLOD = 1024;
+				std::string mName = name;
+				to_upper_inplace(mName);
+				bool point = mName.find("POINT") != std::string::npos;
+				bool clamp = mName.find("CLAMP") != std::string::npos;
+				sampler.AddressU = clamp ? D3D12_TEXTURE_ADDRESS_MODE_CLAMP : D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+				sampler.AddressV = clamp ? D3D12_TEXTURE_ADDRESS_MODE_CLAMP : D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+				sampler.AddressW = clamp ? D3D12_TEXTURE_ADDRESS_MODE_CLAMP : D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+				sampler.MaxLOD = 1024;			
 				sampler.Filter = name.find("POINT") != std::string::npos ? D3D12_FILTER_MIN_MAG_MIP_POINT:D3D12_FILTER_MIN_MAG_MIP_LINEAR;
 			}
 
@@ -196,4 +215,11 @@ bool Material::Create()
 	//m_device->SrvHeap()->CreateView();
 
 	return true;
+}
+
+void Material::AlawaysShow()
+{
+	DepthEnable = false;	
+	CullMode = D3D12_CULL_MODE_NONE;
+	DepthTest = D3D12_COMPARISON_FUNC_ALWAYS;
 }

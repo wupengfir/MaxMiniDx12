@@ -6,7 +6,7 @@
 #include "context.h"
 #include "mesh.h"
 #include "Resource.h"
-#include "TestResource.h"
+#include "EngineDefaultResource.h"
 #include "Material.h"
 #include "Scene.h"
 #include "RenderPass.h"
@@ -262,13 +262,13 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
     Mesh* mesh01;
     Mesh* mesh02;
     Mesh* helmetMesh = Mesh::Load("resource/mesh/sci_fi_space_helmet_by_aliashasim.FBX");
-    TestResource::QuadMesh = TestResource::GetMeshQuad();
+    EngineDefaultResources::QuadMesh = EngineDefaultResources::GetMeshQuad();
     mesh01 = Mesh::Load("resource/mesh/ball.FBX");
     mesh02 = Mesh::Load("resource/mesh/tree01.FBX");
     mesh01->Upload(cmdbuffer.CmdList.Get());
     mesh02->Upload(cmdbuffer.CmdList.Get());
     helmetMesh->Upload(cmdbuffer.CmdList.Get());
-    TestResource::QuadMesh->Upload(cmdbuffer.CmdList.Get());
+    EngineDefaultResources::QuadMesh->Upload(cmdbuffer.CmdList.Get());
 
 
 
@@ -443,6 +443,15 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
     cubemapConvolovePass.SetReflectConvoloveMaterial(&cubeMapReflectionConvoloveMaterial);
 	shadowPass.SetShadowMaterial(&shadowMaterial);
     shadowPass.shadowDistance = 10;
+
+	std::vector<ID3D12CommandList*> cmdlists;
+    //测试线程池
+    std::queue<int> numqueue{};
+    for (size_t i = 0; i < 32; i++)
+    {
+        numqueue.push(i);
+    }
+
     MSG msg{};
     auto previousFrameTime = std::chrono::steady_clock::now();
     while (msg.message != WM_QUIT) {
@@ -465,6 +474,20 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
 
             //每帧更新逻辑,后面移走
             currentContext.Update();
+
+            /*for (size_t i = 0; i < 5; i++)
+            {
+                if (!numqueue.empty())
+                {
+                    int num = numqueue.front();
+                    numqueue.pop();
+                    currentContext.GetWorkThreadPool()->EnqueueTask([num]() {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                        printf("Thread finished work %d \n", num);
+						});
+                }
+            }*/
+       
             /*XMFLOAT3 rotation = obj0.transform.GetRotation();
             rotation.z += 0.01;
             obj0.transform.SetRotation(rotation);*/
@@ -475,18 +498,35 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
             imguiLayer.BeginFrame();
             imguiLayer.DrawExampleWindow(deltaTime);
 
-            //DescPtr* rtDesc = &logicalDevice.RtvHeap()->DescResourceMap()[logicalDevice.GetBackBuffer(logicalDevice.FrameIndex())];
-            //DescPtr* depthDesc = &logicalDevice.DsvHeap()->DescResourceMap()[depthbuffer.GetTexture()];
-            //DescPtr* colorDesc = &logicalDevice.RtvHeap()->DescResourceMap()[colorbuffer.GetTexture()];
+            
+			cmdlists.clear();
             readBakcPass.ExecutePass(currentContext.QueueDirect());
+
+
             shadowPass.ComputeDirectionalShadowCameraMatrix(g_gameCamera);
-            shadowPass.ExecutePass(currentContext.QueueDirect());
+			CommandBuffer* shadowCmd = shadowPass.ExecutePassInThread();
+            //shadowPass.ExecutePass(currentContext.QueueDirect());
             opaquePass.SetRenderTaget(&currentContext.colorbuffer,&currentContext.depthbuffer);
-            opaquePass.ExecutePass(currentContext.QueueDirect());
+			CommandBuffer* opaqueCmd = opaquePass.ExecutePassInThread();
+            //opaquePass.ExecutePass(currentContext.QueueDirect());
+            while (currentContext.GetWorkThreadPool()->GetTaskCount() != 0)
+            {
+
+            }
+            cmdlists.push_back(shadowCmd->CmdList.Get());
+            cmdlists.push_back(opaqueCmd->CmdList.Get());
+            //cmdlists.push_back(postCmd->CmdList.Get());
+            //currentContext.QueueDirect()->ExecuteCommandLists(static_cast<UINT>(cmdlists.size()), cmdlists.data());
+
+
             postPass.SetRenderTaget(nullptr,&currentContext.depthbuffer);
+			//CommandBuffer* postCmd = postPass.ExecutePassInThread();
             postPass.ExecutePass(currentContext.QueueDirect());
             convolovePass.ExecutePass(currentContext.QueueDirect());
             cubemapConvolovePass.ExecutePass(currentContext.QueueDirect());
+
+            
+
             imguiLayer.Render(currentContext);
             currentContext.EndFrame();
             //// 阶段3：FPS 计数，每秒更新一次标题栏

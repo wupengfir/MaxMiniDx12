@@ -7,6 +7,7 @@
 #include "Resource.h"
 #include "Constants.h"
 #include "Material.h"
+#include "WorkThreadPool.h"
 #include <chrono>
 using Microsoft::WRL::ComPtr;
 
@@ -100,7 +101,7 @@ private :
 	SRVDescriptorHeap* m_SrvHeap;
 	CommandBufferPool* m_commandBufferPool;
 	ComPtr<ID3D12Resource> m_backBuffers[FRAME_BACKBUFFER_COUNT];
-	
+	std::unique_ptr<WorkThreadPool>  m_workThreadPool;
 
 
 	bool useDebug;
@@ -108,6 +109,7 @@ public :
 
 	inline static RenderSetting GlobalSetting{};
 	inline static Context* pContext = nullptr;
+	static void Blit(ID3D12GraphicsCommandList* cmdList, TextureBuffer* src, TextureBuffer* dst,Material* material = nullptr);
 	static void SetRenderTarget(ID3D12GraphicsCommandList* cmdList,TextureBuffer* rt,bool clear,DXGI_RGBA clearColor,TextureBuffer* depth = nullptr,bool clearDepth = true,float clearDepthValue = 1);
 
 	UINT ScreenWidth;
@@ -134,6 +136,7 @@ public :
 	ConstantBufferHeap* CBufferHeap() { return m_CBufferHeap; }
 	ReadbackBufferHeap* ReadBufferHeap() { return m_ReadbackBufferHeap; }
 	CommandBufferPool* GetCommandBufferPool(){ return m_commandBufferPool; }
+	WorkThreadPool* GetWorkThreadPool(){ return m_workThreadPool.get(); }
 	bool Init(HWND hwnd, uint32_t width, uint32_t height);
 	void DrawMesh(ID3D12GraphicsCommandList* cmdList,Mesh* mesh,int submeshIndex,Material* mat,const XMMATRIX* matrix ,Camera* camera,DXGI_FORMAT formats[] ,const XMMATRIX* matrixInv = nullptr);
 	void DrawShadow(ID3D12GraphicsCommandList* cmdList, Mesh* mesh, int submeshIndex, Material* mat, const XMMATRIX* matrix, XMMATRIX* matrixVP, const XMMATRIX* matrixInvs = nullptr);

@@ -1,6 +1,6 @@
 #pragma once
 #include "mesh.h"
-class TestResource
+class EngineDefaultResources
 {
 private:
 	

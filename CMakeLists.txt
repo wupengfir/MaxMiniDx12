@@ -10,7 +10,7 @@ find_package(imgui REQUIRED)
 add_executable(MinimalDX12 WIN32
     src/main.cpp
     
- "src/mesh.h" "src/mesh.cpp"   "src/context.h" "src/BasicComponents.h" "src/context.cpp" "src/Resource.h" "src/Resource.cpp" "src/Constants.h" "src/Log/Logs.h" "src/TestResource.h" "src/Material.h" "src/Material.cpp" "src/RenderPass.h" "src/RenderPass.cpp" "src/Scene.h" "src/Scene.cpp" "src/Camera.h" "src/Camera.cpp" "src/Common.h" "src/Texture.h" "src/ui/ImGuiLayer.h" "src/ui/ImGuiLayer.cpp" "src/Common.cpp")
+ "src/mesh.h" "src/mesh.cpp"   "src/context.h" "src/BasicComponents.h" "src/context.cpp" "src/Resource.h" "src/Resource.cpp" "src/Constants.h" "src/Log/Logs.h" "src/EngineDefaultResource.h" "src/Material.h" "src/Material.cpp" "src/RenderPass.h" "src/RenderPass.cpp" "src/Scene.h" "src/Scene.cpp" "src/Camera.h" "src/Camera.cpp" "src/Common.h" "src/Texture.h" "src/ui/ImGuiLayer.h" "src/ui/ImGuiLayer.cpp" "src/Common.cpp" "src/WorkThreadPool.h" "src/WorkThreadPool.cpp")
   
 target_include_directories(MinimalDX12 PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src

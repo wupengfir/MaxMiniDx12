@@ -395,6 +395,8 @@ struct MaterialProperty
 class Material : public Resource
 {
 protected:
+    static std::unique_ptr<Material> BlitMaterial;
+    static std::unique_ptr<Shader> BlitShader;
 	ComPtr<ID3D12RootSignature> m_rootSig;
     ComPtr<ID3D12PipelineState> m_pso;
 	std::vector<D3D12_ROOT_PARAMETER> m_rootParams;
@@ -407,6 +409,7 @@ protected:
     std::vector<uint8_t> m_buffer{};
     ComPtr<ID3D12Resource> m_bufferResource;
 public:
+	static Material* GetBlitMaterial();
     D3D12_CULL_MODE CullMode = D3D12_CULL_MODE_FRONT;
     D3D12_COMPARISON_FUNC DepthTest = D3D12_COMPARISON_FUNC_LESS_EQUAL;
     bool DepthEnable = true;
@@ -418,6 +421,7 @@ public:
     void SetShader(Shader* shader) { m_shader = shader; m_pso.Reset(); }
     void SetComputeShader(ComputeShader* shader) { m_computeShader = shader; m_pso.Reset(); }
     bool Create();
+    void AlawaysShow();
     ID3D12Resource* BufferResource() { return m_bufferResource.Get(); }
     bool RecreateAlignedConstantBuffer = false;
     uint8_t* MaterialData() { return m_buffer.data(); }

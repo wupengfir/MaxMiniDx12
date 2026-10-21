@@ -376,7 +376,7 @@ public:
 	}
 
 	CommandBuffer AcquireCommandList(UINT threadID, UINT frameIndex, Type type);
-	
+	CommandBuffer* AcquireCommandBufferRef(UINT threadID, UINT frameIndex, Type type);
 	//~CommandBufferPool()
 	//{
 	//	for(ID3D12GraphicsCommandList* buffer:m_freeCmdListPool)
@@ -448,6 +448,10 @@ public:
 	void UploadTexture(uint8_t* textureData,ID3D12GraphicsCommandList* cmdList);
 	void UploadTexture(const Image* images, ID3D12GraphicsCommandList* cmdList);
 	void ReleaseUploadBuffer() { tempUpload.Reset(); };
+	XMVECTOR GetTextureSize() const
+	{
+		return XMVectorSet(1/(float)Width, 1/(float)Height, (float)Width, (float)Height);
+	}
 	void Release()
 	{
 		tempUpload.Reset();

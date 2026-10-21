@@ -2,7 +2,7 @@
 #define COMMON
 
 #define Matrix_MVP mul(_Matrix_M , _Matrix_VP)
-
+#define SAMPLE_TEXTURE2D_X(texture, sampler, uv) texture.Sample(sampler, uv)
 cbuffer PerCamera : register(b0)
 {
 	float4 _CameraPos;
@@ -20,10 +20,13 @@ cbuffer PerFrame : register(b2)
     float4 _Time; // x = time, y = sin(time), z = cos(time), w = deltaTime
     row_major float4x4 _ShadowMatrix_VP;
 }
-#endif
+
 
 Texture2D _ShadowMap;
 SamplerComparisonState sampler_ShadowMap;
+Texture2D _SourceTex;
+float4 _SourceTex_TexelSize;
+SamplerState sampler_LinearClamp;
 
 float SampleShadow(float3 worldPos)
 {
@@ -56,3 +59,5 @@ float3 ACESFilmicLumaPreserve(float3 color)
     float lumaMapped = dot(mapped, float3(0.2126, 0.7152, 0.0722));
     return mapped * (luma / lumaMapped);
 }
+
+#endif

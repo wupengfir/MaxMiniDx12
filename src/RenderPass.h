@@ -6,23 +6,28 @@
 #include "Common.h"
 class DescPtr;
 class Material;
+class Shader;
 class StructureBuffer;
 class TextureBuffer;
 class CubemapRenderTextureBuffer;
 class DepthTextureBuffer;
 class Camera;
+class RenderTextureBuffer;
+class CommandBuffer;
 class RenderPass
 {
 protected:
 	TextureBuffer* m_Color;	
 	TextureBuffer* m_Depth;
 	UINT m_ColorRtCount;
+	std::unique_ptr<CommandBuffer> cmdbuffer;
 	//std::vector<D3D12_RESOURCE_DESC> m_ColorDescs{};
 	//D3D12_RESOURCE_DESC m_DepthDesc{};
 public:
 	UINT cameraIndex = 0;
 	void SetRenderTaget(TextureBuffer* rt, TextureBuffer* depth);
 	virtual void ExecutePass(ID3D12CommandQueue* queue) = 0;
+	virtual CommandBuffer* ExecutePassInThread() { return (nullptr); }
 };
 
 class OpaquePass : public RenderPass
@@ -30,15 +35,32 @@ class OpaquePass : public RenderPass
 public:
 	inline static ID3D12Resource* ColorAttachment = nullptr;
 	void ExecutePass(ID3D12CommandQueue* queue) override ;
+	CommandBuffer* ExecutePassInThread() override;
 };
 
 class PostProcessPass : public RenderPass
 {
 private : 
 	Material* m_postprocessMaterial;
+
+	//bloom
+	std::unique_ptr<Material> m_PreFilterMaterial;
+	std::unique_ptr<Material> m_VBlurMaterial;
+	std::unique_ptr<Material> m_HBlurMaterial;
+	std::unique_ptr<Material> m_UpSampleMaterial;
+	std::unique_ptr<Shader> m_PreFilterShader;
+	std::unique_ptr<Shader> m_VBlurShader;
+	std::unique_ptr<Shader> m_HBlurShader;
+	std::unique_ptr<Shader> m_UpSampleShader;
+	std::vector<std::unique_ptr<RenderTextureBuffer>> m_bloomBufferDown;
+	std::vector<std::unique_ptr<RenderTextureBuffer>> m_bloomBufferUp;
+
 public:
+	PostProcessPass();
+	~PostProcessPass();
 	void SetPostMaterial(Material* mat) { m_postprocessMaterial = mat; }
 	void ExecutePass(ID3D12CommandQueue* queue) override ;
+	CommandBuffer* ExecutePassInThread() override;
 };
 
 class CubemapConvolovePass : public RenderPass
@@ -117,6 +139,7 @@ public:
 	void SetShadowMaterial(Material* mat) { m_shadowMaterial = mat; }
 	void ComputeDirectionalShadowCameraMatrix(Camera* camera);
 	void ExecutePass(ID3D12CommandQueue* queue) override;
+	CommandBuffer* ExecutePassInThread() override;
 	ShadowPass();
 	~ShadowPass() = default;
 };

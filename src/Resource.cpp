@@ -187,6 +187,50 @@ DescPtr SRVDescriptorHeap::CreateUAView(ID3D12Resource* resource, ViewDesc desc)
 		//m_cmdListPool.push_back(cmdList);
 	}
 
+
+	CommandBuffer* CommandBufferPool::AcquireCommandBufferRef(UINT threadID, UINT frameIndex, Type type)
+	{
+		ID3D12CommandAllocator* alloctor = m_allocators[threadID * m_gap + frameIndex * QUEUE_TYPES + static_cast<UINT>(type)].Get();
+		//CommandBuffer cmdList(this);
+		CommandBuffer* commandBuffer = new CommandBuffer(this);
+
+		if (m_freeCmdListPool.size() > 0)
+		{
+			commandBuffer->CmdList = m_freeCmdListPool[m_freeCmdListPool.size() - 1];
+			m_freeCmdListPool.erase(m_freeCmdListPool.begin() + m_freeCmdListPool.size() - 1);
+
+		}
+		else
+		{
+			D3D12_COMMAND_LIST_TYPE cmdtype = D3D12_COMMAND_LIST_TYPE_DIRECT;
+			switch (type)
+			{
+			case CommandBufferPool::Type::DIRECT:
+				cmdtype = D3D12_COMMAND_LIST_TYPE_DIRECT;
+				break;
+			case CommandBufferPool::Type::COMPUTE:
+				cmdtype = D3D12_COMMAND_LIST_TYPE_COMPUTE;
+				break;
+			case CommandBufferPool::Type::COPY:
+				cmdtype = D3D12_COMMAND_LIST_TYPE_COPY;
+				break;
+			}
+			HRESULT hr = m_device->DxDevice()->CreateCommandList(0, cmdtype,
+				alloctor, nullptr, IID_PPV_ARGS(&(commandBuffer->CmdList)));
+			if (FAILED(hr)) {
+				_com_error err(hr);
+				std::wcout << L"!!!!!错误: " << err.ErrorMessage() << std::endl;
+				assert(false);
+			}
+			commandBuffer->CmdList->Close();
+		}
+
+
+		commandBuffer->CmdList->Reset(alloctor, nullptr);
+		return commandBuffer;
+	}
+
+
 void DepthTextureBuffer::CreateTexture()
 	{
 		m_desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
@@ -276,33 +320,79 @@ void RenderTextureBuffer::CreateTexture()
         &m_desc, D3D12_RESOURCE_STATE_RENDER_TARGET, &clearValue,
         IID_PPV_ARGS(&m_texture));
 
-		
+		int mipCount = m_texture.Get()->GetDesc().MipLevels;
+		CPUHandles.resize((int)ViewType::Count * Depth * mipCount);
+		GPUHandles.resize((int)ViewType::Count * Depth * mipCount);
+		for (int mip = 0; mip < mipCount; mip++)
+		{
+			for (int i = 0; i < Depth; i++)
+			{
+				{//rt view
+					D3D12_RENDER_TARGET_VIEW_DESC sdDesc = {};
+					sdDesc.Format = Format;
+					sdDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+					sdDesc.Texture2D.MipSlice = mip;
+					DescriptorHeap::ViewDesc viewdesc(&sdDesc);
+					DescPtr descPtr = m_device->RtvHeap()->CreateView(m_texture.Get(), viewdesc);
+					CPUHandles[(int)ViewType::Count * Depth * mip + (int)ViewType::RTV + (int)ViewType::Count * i] = descPtr.cpuhandle;
+					GPUHandles[(int)ViewType::Count * Depth * mip + (int)ViewType::RTV + (int)ViewType::Count * i] = descPtr.gpuhandle;
+				}
+				{
+					D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+					srvDesc.Format = Format;
+					srvDesc.ViewDimension = SrvDimension;
+					srvDesc.Texture2D.MostDetailedMip = mip;
+					srvDesc.Texture2D.MipLevels = mipCount == 0 ? -1 : 1;
+					srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
+					srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+					DescriptorHeap::ViewDesc viewdesc(&srvDesc);
+					DescPtr descPtr = m_device->SrvHeap()->CreateView(m_texture.Get(), viewdesc);
+					CPUHandles[(int)ViewType::Count * Depth * mip + (int)ViewType::SRV + (int)ViewType::Count * i] = descPtr.cpuhandle;
+					GPUHandles[(int)ViewType::Count * Depth * mip + (int)ViewType::SRV + (int)ViewType::Count * i] = descPtr.gpuhandle;
+				}
+			}
 
-		{
-			//rt view
-			D3D12_RENDER_TARGET_VIEW_DESC sdDesc = {};
-			sdDesc.Format = Format;
-			sdDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
-			sdDesc.Texture2D.MipSlice = 0;
-			DescriptorHeap::ViewDesc viewdesc(&sdDesc);
-			DescPtr descPtr = m_device->RtvHeap()->CreateView(m_texture.Get(), viewdesc);
-			CPUHandles[(int)ViewType::RTV] = descPtr.cpuhandle;
-			GPUHandles[(int)ViewType::RTV] = descPtr.gpuhandle;
 		}
-		{
-			//srv view
-			D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-			srvDesc.Format = Format;
-			srvDesc.ViewDimension = SrvDimension;
-			srvDesc.Texture2D.MostDetailedMip = 0;      // 从最详细的Mip 0开始
-			srvDesc.Texture2D.MipLevels = -1;           // 使用从 MostDetailedMip 开始的所有剩余Mip层级
-			srvDesc.Texture2D.ResourceMinLODClamp = 0.0f; // 不对LOD进行限制
-			srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-			DescriptorHeap::ViewDesc viewdesc(&srvDesc);
-			DescPtr descPtr = m_device->SrvHeap()->CreateView(m_texture.Get(),viewdesc);
-			CPUHandles[(int)ViewType::SRV] = descPtr.cpuhandle;
-			GPUHandles[(int)ViewType::SRV] = descPtr.gpuhandle;
-		}
+		//{
+		//	//srv view
+		//	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		//	srvDesc.Format = Format;
+		//	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+		//	srvDesc.Texture2D.MostDetailedMip = 0;      // 从最详细的Mip 0开始
+		//	srvDesc.Texture2D.MipLevels = -1;           // 使用从 MostDetailedMip 开始的所有剩余Mip层级
+		//	srvDesc.Texture2D.ResourceMinLODClamp = 0.0f; // 不对LOD进行限制
+		//	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		//	DescriptorHeap::ViewDesc viewdesc(&srvDesc);
+		//	DescPtr descPtr = m_device->SrvHeap()->CreateView(m_texture.Get(), viewdesc);
+		//	CPUHandles[(int)ViewType::SRV] = descPtr.cpuhandle;
+		//	GPUHandles[(int)ViewType::SRV] = descPtr.gpuhandle;
+		//}
+
+		//{
+		//	//rt view
+		//	D3D12_RENDER_TARGET_VIEW_DESC sdDesc = {};
+		//	sdDesc.Format = Format;
+		//	sdDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+		//	sdDesc.Texture2D.MipSlice = 0;
+		//	DescriptorHeap::ViewDesc viewdesc(&sdDesc);
+		//	DescPtr descPtr = m_device->RtvHeap()->CreateView(m_texture.Get(), viewdesc);
+		//	CPUHandles[(int)ViewType::RTV] = descPtr.cpuhandle;
+		//	GPUHandles[(int)ViewType::RTV] = descPtr.gpuhandle;
+		//}
+		//{
+		//	//srv view
+		//	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		//	srvDesc.Format = Format;
+		//	srvDesc.ViewDimension = SrvDimension;
+		//	srvDesc.Texture2D.MostDetailedMip = 0;      // 从最详细的Mip 0开始
+		//	srvDesc.Texture2D.MipLevels = -1;           // 使用从 MostDetailedMip 开始的所有剩余Mip层级
+		//	srvDesc.Texture2D.ResourceMinLODClamp = 0.0f; // 不对LOD进行限制
+		//	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		//	DescriptorHeap::ViewDesc viewdesc(&srvDesc);
+		//	DescPtr descPtr = m_device->SrvHeap()->CreateView(m_texture.Get(),viewdesc);
+		//	CPUHandles[(int)ViewType::SRV] = descPtr.cpuhandle;
+		//	GPUHandles[(int)ViewType::SRV] = descPtr.gpuhandle;
+		//}
 
 
 		m_texture->SetName(L"RenderBuffer");

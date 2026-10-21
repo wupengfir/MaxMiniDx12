@@ -2,9 +2,25 @@
 #include "mesh.h"
 #include "Material.h"
 #include "Camera.h"
+#include "Scene.h"
+#include "EngineDefaultResource.h"
 Context::Context(bool useDebugLayer):useDebug(useDebugLayer)
 {
     
+}
+
+void Context::Blit(ID3D12GraphicsCommandList* cmdList, TextureBuffer* src, TextureBuffer* dst, Material* material)
+{
+    if(!material)
+		material = Material::GetBlitMaterial();
+    SetRenderTarget(cmdList, dst, false, { 0,0,0,0 });
+    cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    DXGI_FORMAT formats[8] = {};
+    formats[0] = dst->GetResourceDesc().Format;
+    XMMATRIX identity = XMMatrixIdentity();
+    material->SetTexture("_SourceTex", src);
+    material->SetValue(MaterialPropertyType::FLOAT4, "_SourceTex_TexelSize", src->GetTextureSize());
+    Context::pContext->DrawMesh(cmdList, EngineDefaultResources::QuadMesh, 0, material, &(identity), Scene::CurrentScene->cameras[0], formats);
 }
 
 void Context::SetRenderTarget(ID3D12GraphicsCommandList* cmdList,TextureBuffer* rt,bool clear,DXGI_RGBA clearColor,TextureBuffer* depth,bool clearDepth,float clearDepthValue)
@@ -312,7 +328,7 @@ void Context::DrawMesh(ID3D12GraphicsCommandList* cmdList,Mesh* mesh,int submesh
         else
         {
             if (param.bindDesc.Type == D3D_SIT_SAMPLER)continue;
-            if (param.bindDesc.Type == D3D_SHADER_INPUT_TYPE::D3D10_SIT_TEXTURE)
+            if (param.bindDesc.Type == D3D_SHADER_INPUT_TYPE::D3D_SIT_TEXTURE)
             {
                 MaterialProperty* property = mat->FindProperty(param.name);
                 if (property)
@@ -698,6 +714,7 @@ bool Context::Init(HWND hwnd, uint32_t width, uint32_t height)
     pContext = this;
     Resource::m_device = this;
     m_commandBufferPool = new CommandBufferPool(1);
+	m_workThreadPool = std::make_unique<WorkThreadPool>(4);
     m_DsvHeap = new DSVDescriptorHeap(1024);
     m_RtvHeap = new RTVDescriptorHeap(1024);
     m_SrvHeap = new SRVDescriptorHeap(1024*512);

@@ -6,6 +6,7 @@ cbuffer PerMaterial
 };
 
 Texture2D _ColorAttachment;
+Texture2D _BloomTexture;
 SamplerState sampler_linear_clamp;
 struct VSInput
 {
@@ -33,7 +34,8 @@ float4 PS(PSInput input) : SV_TARGET
     input.uv.y = 1 - input.uv.y;
     float4 color = _ColorAttachment.Sample(sampler_linear_clamp,input.uv.xy);
 
-
+    half4 bloom = _BloomTexture.Sample(sampler_linear_clamp, input.uv.xy);
+    color.xyz += bloom.xyz;
     //tonemap
     color.xyz = ACESFilmic(color.xyz * exp2(_Exposure));
 
