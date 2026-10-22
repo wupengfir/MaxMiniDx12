@@ -513,8 +513,8 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
             {
 
             }
-            cmdlists.push_back(shadowCmd->CmdList.Get());
-            cmdlists.push_back(opaqueCmd->CmdList.Get());
+            cmdlists.push_back(shadowPass.GetCommandBuffer()->CmdList.Get());
+            cmdlists.push_back(opaquePass.GetCommandBuffer()->CmdList.Get());
             //cmdlists.push_back(postCmd->CmdList.Get());
             //currentContext.QueueDirect()->ExecuteCommandLists(static_cast<UINT>(cmdlists.size()), cmdlists.data());
 

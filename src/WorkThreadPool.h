@@ -18,6 +18,6 @@ public:
 	explicit WorkThreadPool(int threadCount);
 	~WorkThreadPool();
 
-	void EnqueueTask(std::function<void()> task);
+	void EnqueueTask(std::function<void(int)> task);
 	UINT GetTaskCount() const { return m_taskCount.load(std::memory_order_relaxed); }
 };

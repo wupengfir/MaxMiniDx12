@@ -44,11 +44,14 @@ void OpaquePass::ExecutePass(ID3D12CommandQueue* queue)
 
 CommandBuffer* OpaquePass::ExecutePassInThread()
 {
-    if(!cmdbuffer)
-        cmdbuffer.reset(Context::pContext->GetCommandBufferPool()->AcquireCommandBufferRef(0, Context::pContext->FrameIndex(), CommandBufferPool::Type::DIRECT));
     
-    Context::pContext->GetWorkThreadPool()->EnqueueTask([this]() {
-            ID3D12GraphicsCommandList* cmdList = cmdbuffer->CmdList.Get();
+    
+    Context::pContext->GetWorkThreadPool()->EnqueueTask([this](int threadIndex) {
+        if (!cmdbuffer)
+            cmdbuffer.reset(Context::pContext->GetCommandBufferPool()->AcquireCommandBufferRef(threadIndex, Context::pContext->FrameIndex(), CommandBufferPool::Type::DIRECT));
+        else
+			cmdbuffer->GetPool()->ResetCommandBuffer(*cmdbuffer);
+        ID3D12GraphicsCommandList* cmdList = cmdbuffer->CmdList.Get();
             //设置描述符堆，每个cmdlist都要设
             ID3D12DescriptorHeap* ppHeaps[] = { Context::pContext->SrvHeap()->Heap() };
             cmdList->SetDescriptorHeaps(1, ppHeaps);
@@ -650,13 +653,11 @@ void ShadowPass::ExecutePass(ID3D12CommandQueue* queue)
 
 CommandBuffer* ShadowPass::ExecutePassInThread()
 {
-
-
-
-    if (!cmdbuffer)
-        cmdbuffer.reset(Context::pContext->GetCommandBufferPool()->AcquireCommandBufferRef(0, Context::pContext->FrameIndex(), CommandBufferPool::Type::DIRECT));
-
-    Context::pContext->GetWorkThreadPool()->EnqueueTask([this]() {
+    Context::pContext->GetWorkThreadPool()->EnqueueTask([this](int threadIndex) {
+        if (!cmdbuffer)
+            cmdbuffer.reset(Context::pContext->GetCommandBufferPool()->AcquireCommandBufferRef(threadIndex, Context::pContext->FrameIndex(), CommandBufferPool::Type::DIRECT));
+        else
+            cmdbuffer->GetPool()->ResetCommandBuffer(*cmdbuffer);
         ID3D12GraphicsCommandList* cmdList = cmdbuffer->CmdList.Get();
         //设置描述符堆，每个cmdlist都要设
         ID3D12DescriptorHeap* ppHeaps[] = { Context::pContext->SrvHeap()->Heap() };

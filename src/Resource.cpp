@@ -94,9 +94,10 @@ Context* Resource::m_device = nullptr;
 
 ID3D12Device* Resource::GetDevice() const { return m_device->DxDevice(); }
 
+
 CommandBuffer::~CommandBuffer()
 {
-	m_pool->FreeCommandBuffer(this->CmdList);
+	m_pool->FreeCommandBuffer(this);
 }
 
 //void CommandBuffer::Release()
@@ -146,14 +147,16 @@ DescPtr SRVDescriptorHeap::CreateUAView(ID3D12Resource* resource, ViewDesc desc)
 
 	CommandBuffer CommandBufferPool::AcquireCommandList(UINT threadID,UINT frameIndex,Type type)
 	{
-		ID3D12CommandAllocator* alloctor = m_allocators[threadID * m_gap + frameIndex * QUEUE_TYPES + static_cast<UINT>(type)].Get();
+		int index = threadID * m_gap + frameIndex * QUEUE_TYPES + static_cast<UINT>(type);
+		ID3D12CommandAllocator* alloctor = m_allocators[index].Get();
 		//CommandBuffer cmdList(this);
 		CommandBuffer commandBuffer(this);
-
-		if (m_freeCmdListPool.size() > 0)
+		commandBuffer.AllocatorIndex = index;
+		auto& list = m_freeCmdListPool[index];
+		if (list.size() > 0)
 		{
-			commandBuffer.CmdList = m_freeCmdListPool[m_freeCmdListPool.size() - 1];
-			m_freeCmdListPool.erase(m_freeCmdListPool.begin() + m_freeCmdListPool.size() - 1);
+			commandBuffer.CmdList = list[list.size() - 1];
+			list.erase(list.begin() + list.size() - 1);
 			
 		}
 		else
@@ -190,14 +193,17 @@ DescPtr SRVDescriptorHeap::CreateUAView(ID3D12Resource* resource, ViewDesc desc)
 
 	CommandBuffer* CommandBufferPool::AcquireCommandBufferRef(UINT threadID, UINT frameIndex, Type type)
 	{
-		ID3D12CommandAllocator* alloctor = m_allocators[threadID * m_gap + frameIndex * QUEUE_TYPES + static_cast<UINT>(type)].Get();
+		int index = threadID * m_gap + frameIndex * QUEUE_TYPES + static_cast<UINT>(type);
+		ID3D12CommandAllocator* alloctor = m_allocators[index].Get();
 		//CommandBuffer cmdList(this);
 		CommandBuffer* commandBuffer = new CommandBuffer(this);
 
-		if (m_freeCmdListPool.size() > 0)
+		commandBuffer->AllocatorIndex = index;
+		auto& list = m_freeCmdListPool[index];
+		if (list.size() > 0)
 		{
-			commandBuffer->CmdList = m_freeCmdListPool[m_freeCmdListPool.size() - 1];
-			m_freeCmdListPool.erase(m_freeCmdListPool.begin() + m_freeCmdListPool.size() - 1);
+			commandBuffer->CmdList = list[list.size() - 1];
+			list.erase(list.begin() + list.size() - 1);
 
 		}
 		else

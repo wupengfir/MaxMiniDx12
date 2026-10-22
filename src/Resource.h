@@ -303,14 +303,14 @@ class CommandBuffer
 private:
 	CommandBufferPool* m_pool;
 public:
+	UINT AllocatorIndex;
 	ComPtr<ID3D12GraphicsCommandList> CmdList;
 	CommandBuffer(CommandBufferPool* pool)
 	{
 		m_pool = pool;
 	}
-
 	void Release();
-
+	CommandBufferPool* GetPool() { return m_pool; }
 	~CommandBuffer();
 
 };
@@ -321,7 +321,8 @@ class CommandBufferPool : Resource
 private:
 	std::vector<ComPtr<ID3D12CommandAllocator>> m_allocators;
 	//std::vector<ComPtr<CommandBuffer>> m_cmdListPool;
-	std::vector<ComPtr<ID3D12GraphicsCommandList>> m_freeCmdListPool;
+	std::vector<std::vector<ComPtr<ID3D12GraphicsCommandList>>> m_freeCmdListPool;
+	//std::vector<ComPtr<ID3D12GraphicsCommandList>> m_freeCmdListPool;
 
 	UINT m_threadCount;
 	UINT m_frameBufferCount;
@@ -337,12 +338,18 @@ public:
 	CommandBufferPool(UINT threadCount,UINT frameBufferCount = FRAME_BACKBUFFER_COUNT):m_allocators()
 	{
 		m_allocators.resize(threadCount * frameBufferCount * QUEUE_TYPES);
+		m_freeCmdListPool.resize(threadCount * frameBufferCount * QUEUE_TYPES);
 		m_threadCount = threadCount;
 		m_frameBufferCount = frameBufferCount;
 		m_gap = frameBufferCount * QUEUE_TYPES;
 		Init();
     }
 	
+	void ResetCommandBuffer(CommandBuffer& buffer)
+	{
+		buffer.CmdList->Reset(m_allocators[buffer.AllocatorIndex].Get(), nullptr);
+	}
+
 	void ResetAllocators(UINT threadCount,UINT frameBufferCount)
 	{
 		//不要用.去调用reset。。。。。。。。
@@ -370,9 +377,19 @@ public:
 
 	}
 
-	void FreeCommandBuffer(ComPtr<ID3D12GraphicsCommandList> buffer)
+	/*void FreeCommandBuffer(ComPtr<ID3D12GraphicsCommandList> buffer)
 	{
 		m_freeCmdListPool.push_back(buffer);
+	}*/
+
+	void FreeCommandBuffer(CommandBuffer& buffer)
+	{
+		m_freeCmdListPool[buffer.AllocatorIndex].push_back(buffer.CmdList);
+	}
+
+	void FreeCommandBuffer(CommandBuffer* buffer)
+	{
+		m_freeCmdListPool[buffer->AllocatorIndex].push_back(buffer->CmdList);
 	}
 
 	CommandBuffer AcquireCommandList(UINT threadID, UINT frameIndex, Type type);

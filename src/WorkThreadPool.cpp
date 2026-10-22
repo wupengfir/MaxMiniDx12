@@ -1,6 +1,6 @@
 #include "WorkThreadPool.h"
 
-
+thread_local int WorkThreadPool::m_thread_Index = -1;
 WorkThreadPool::WorkThreadPool(int threadCount)
 {
 	for (size_t i = 0; i < threadCount; i++)
@@ -40,7 +40,7 @@ WorkThreadPool::~WorkThreadPool()
 	}
 }
 
-void WorkThreadPool::EnqueueTask(std::function<void()> task)
+void WorkThreadPool::EnqueueTask(std::function<void(int)> task)
 {
 	{
 		std::unique_lock<std::mutex> lock(m_queueMutex);

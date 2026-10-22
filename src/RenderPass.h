@@ -26,6 +26,7 @@ protected:
 public:
 	UINT cameraIndex = 0;
 	void SetRenderTaget(TextureBuffer* rt, TextureBuffer* depth);
+	CommandBuffer* GetCommandBuffer() { return cmdbuffer.get(); }
 	virtual void ExecutePass(ID3D12CommandQueue* queue) = 0;
 	virtual CommandBuffer* ExecutePassInThread() { return (nullptr); }
 };
