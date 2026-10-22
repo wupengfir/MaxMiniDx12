@@ -713,7 +713,7 @@ bool Context::Init(HWND hwnd, uint32_t width, uint32_t height)
 	}
     pContext = this;
     Resource::m_device = this;
-    m_commandBufferPool = new CommandBufferPool(1);
+    m_commandBufferPool = new CommandBufferPool(4);
 	m_workThreadPool = std::make_unique<WorkThreadPool>(4);
     m_DsvHeap = new DSVDescriptorHeap(1024);
     m_RtvHeap = new RTVDescriptorHeap(1024);

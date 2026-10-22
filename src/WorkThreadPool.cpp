@@ -5,9 +5,10 @@ WorkThreadPool::WorkThreadPool(int threadCount)
 {
 	for (size_t i = 0; i < threadCount; i++)
 	{
-		m_threads.emplace_back(std::thread([this]
+		m_threads.emplace_back(std::thread([this,i]
 			{
-				std::function<void()> task;
+				m_thread_Index = i;
+				std::function<void(int)> task;
 				while (true)
 				{
 					{
@@ -21,7 +22,7 @@ WorkThreadPool::WorkThreadPool(int threadCount)
 						task = std::move(m_tasks.front());
 						m_tasks.pop();
 					}
-					task();
+					task(m_thread_Index);
 					m_taskCount.fetch_add(-1, std::memory_order_acquire);
 				}
 			}));
